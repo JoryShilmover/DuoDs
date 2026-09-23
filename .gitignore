@@ -1,0 +1,12 @@
+# macOS metadata
+.DS_Store
+
+# Local Xcode and Swift build output
+DerivedData/
+.build/
+build/
+xcuserdata/
+*.xcuserstate
+
+# Local validation evidence may contain private device/content metadata
+artifacts/poc/
