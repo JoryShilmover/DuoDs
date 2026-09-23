@@ -8,6 +8,10 @@ Implement the Duo DS proof of concept described in this repository. This is an e
 
 Workspace: `/Users/joryshilmover/Documents/Personal Programming/Duo DS emulator`.
 
+Repository: `git@github.com:JoryShilmover/ios-ds-emulator.git` ([GitHub](https://github.com/JoryShilmover/ios-ds-emulator)). Git is already initialized, with `origin` configured and local `main` tracking `origin/main`. The initial POC documentation was committed and pushed as `89b9043`; use the current checkout, not a reset to that historical commit. No emulator implementation exists yet.
+
+For an existing checkout, inspect `git status --short --branch`, `git remote -v`, and `git log -1 --oneline`; preserve local changes and the current branch. Do not run `git init` or recreate `origin`. If executing elsewhere, clone the repository and use the clone's root as the workspace. Record the actual starting revision in `WORK_LOG.md`.
+
 Read in order:
 
 1. Applicable `AGENTS.md` and `.codex/orchestrate.md`, then the available orchestrate skill.

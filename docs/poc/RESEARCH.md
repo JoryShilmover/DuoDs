@@ -28,7 +28,7 @@ Date: September 23, 2026. Sources were inspected during the feasibility investig
 
 ## Local preflight
 
-Read-only checks were performed on September 23, 2026:
+The original read-only checks below were performed on September 23, 2026, before repository initialization. The Git update following this table supersedes the original repository-state observation:
 
 | Check | Observed result | Interpretation |
 | --- | --- | --- |
@@ -37,9 +37,13 @@ Read-only checks were performed on September 23, 2026:
 | `xcodebuild -version` | Xcode 27.0, build 27A266a | Does not establish Duo SDK support |
 | `xcodebuild -showsdks` | iOS 27.0 and iOS Simulator 27.0 among listed SDKs | Required newer beta SDK not present in this selected installation's listing |
 | `xcrun simctl list runtimes` | Failed with CoreSimulatorService connection/access errors; log access reported `Operation not permitted` | Runtime inventory is unknown; do not report runtimes as missing |
-| `git --version` | 2.39.0 | Git executable available; workspace is not yet an initialized repository |
+| `git --version` | 2.39.0 | Git executable available; workspace was not yet initialized at this original preflight |
 | `command -v rg` | `/opt/homebrew/bin/rg` | Text search tool available |
 | `command -v cmake`, `command -v ninja` | No path returned | Not on the current PATH; not proof they are absent elsewhere |
+
+### Repository setup completed
+
+Later on September 23, 2026, this folder was initialized and connected to `git@github.com:JoryShilmover/ios-ds-emulator.git`. The remote's initial commit `17be12d` was preserved, and documentation commit `89b9043` was pushed to `main`. Local `main` tracks `origin/main`. `.gitignore` excludes macOS metadata, local build output, and `artifacts/poc/`. The working tree was clean after setup; execution must recheck its current state. Repository setup is complete, while emulator implementation and device validation have not started.
 
 No dependencies were downloaded, no SDK installed, no devices paired, no credentials inspected, no app compiled, and no game run. The simulator check was not retried with elevated permissions because runtime access is not needed to author this plan.
 
