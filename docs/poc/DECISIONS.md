@@ -13,3 +13,4 @@
 - D11: Layout scoring is lexicographic: first "reserves a usable control band with both screens ≥170 pt", then smallest-screen width. Split still wins ties. Larger screens with unusable controls are not an acceptable trade.
 - D12: Lid uses the core's L2+Y chord; our retained core patch masks DS Y while L2 is held so the chord never presses Y in-game. L2 is not otherwise used by the host.
 - D13: Audio route changes pause only on `.oldDeviceUnavailable`.
+- D14 (user instruction, supersedes D06 for G1): device testing on the paired iPhone 15 Pro Max (iOS 27.0) is now allowed, signed with the user's personal team `9TZU9LRJV9` (free-team profiles expire after 7 days; reinstall with the same command). The Duo is not yet released, so the ordinary-iPhone path is the target: on iOS < 27.1 the fold APIs are skipped and layout uses the safe area.

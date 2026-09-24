@@ -11,7 +11,7 @@ Starting revision: `e2558fe` on `main`, clean tracked working tree; origin and b
 | P4 | passed (unit) | library_saves | 10 library/persistence tests pass (duplicates, corruption, interrupted writes, version/ROM mismatch, traversal). |
 | P5 | active | root | `--diagnostic --selftest` passes: A input changes frame, release reverts, pause freezes core (0 frames/1 s), held input released across pause/resume, stop→relaunch. Not observed: lid (fixture ignores lid), battery save round trip (no lawful cartridge-save fixture; see FIXTURES.md), real audio interruption, touch on lower screen via UI, layout swap/override. |
 | P6 | active | root | Manual fold trial on Duo simulator (user-driven; `simctl` has no posture control): one boot, frames continuous through half-fold, close→outer, reopen, 2 rotations (no reboot). Half-fold: `split` layout clear of 40 pt division. Controls were missing on outer display and crammed in portrait → solver fixed (D11) and re-verified on the simulator: half-fold landscape and portrait splits with full controls, outer landscape with controls. Remaining: outer-display portrait under the fix (covered by unit test only), lower-band control placement (unit-level change, not re-observed), real hardware. |
-| P7 | not run | — | Simulator-only run (D06). G1/G3 not run. |
+| P7 | active | root + user | G1 on iPhone 15 Pro Max (iOS 27.0), personal team (D14). Release build signed and installed; entitlements show no JIT/dynamic-codesigning; 0 JIT symbols in app and core. Launch blocked until the user trusts the developer profile on the phone. G3 blocked (no Duo). |
 | P8 | passed (simulator scope) | reviewer → root | Review of `cf6cb68` ("ship with fixes"); fixes 1–4 landed and race fix verified 3/3 on simulator. Open items in `REPORT.md`. Decision: **assessment pending**. |
 
 No ROMs, firmware, keys, saves, or device identifiers belong in tracked evidence. Raw local evidence goes in ignored artifacts/poc/.
@@ -46,6 +46,8 @@ P0–P4 as above. Run ended (usage limit) ~17:42 local while root was rebuilding
   Reviewer could not verify: device audio/route behavior, device JIT symbols, homebrew SD (DLDI) save durability, multi-scene ownership (`owner` never released on scene disconnect).
 - User-supplied commercial title `user-01` (see FIXTURES.md; identity private) imported through the file picker on the Duo simulator: boots with built-in FreeBIOS, 3D overworld renders, gameplay reached, 59.83 Hz core, 4 underruns over ~19k frames (simulator — not a performance result). Cartridge save round trip: user saved in-game, closed to Library, relaunched — save loaded (user-observed); `battery.save` and backup `battery.previous` written by PersistenceStore.
 - Final report: `docs/poc/REPORT.md` (gate table, matrix rows, open defects, next actions). Decision **assessment pending** (G1 not run by user choice).
+- Pushed `36c840d` to origin/main (user approved).
+- Device build (D14): signed Release app built and installed on the iPhone 15 Pro Max; evidence in `artifacts/poc/2026-09-23-device/logs/` (entitlements, binary SHA-256 `13f3cf80…cadd`, build log). `get-task-allow=true` (development signing) — not a distribution-signed binary.
 
 ## Backlog (user requests)
 - **UI and on-screen button overhaul** (2026-09-23): the current 7×2 grid is a placeholder. Redesign the controls' layout and placement for each pose (flat, half-fold, outer, portrait), with thumb reach, a DS-like D-pad and face buttons, and user-adjustable placement. Track as S2 in REPORT.md; ties into the V18 ergonomics trial.
@@ -53,7 +55,8 @@ P0–P4 as above. Run ended (usage limit) ~17:42 local while root was rebuilding
 ## How to resume (for any agent)
 1. `DEVELOPER_DIR=/Applications/Xcode-Beta.app/Contents/Developer`; first-time: `scripts/bootstrap-tools.sh`, then `scripts/build-poc.sh --diagnostic --configuration Debug` (full core build) or `--skip-core` if `build/core-simulator/libDuoCoreCombined.a` exists.
 2. `scripts/test-poc.sh` for logic tests.
-3. Simulator run: `xcrun simctl install booted build/DerivedData/Build/Products/Debug-iphonesimulator/DuoDS.app && xcrun simctl launch --console-pty booted org.duods.prototype --diagnostic`.
+3. Device build: `scripts/build-poc.sh --sdk iphoneos --team 9TZU9LRJV9 --configuration Release --diagnostic --destination id=<device UDID>` (a specific destination lets Xcode register the device with the free team); install: `xcrun devicectl device install app --device <UDID> build/DerivedData/Build/Products/Release-iphoneos/DuoDS.app`. First launch requires trusting the developer in Settings → General → VPN & Device Management.
+3b. Simulator run: `xcrun simctl install booted build/DerivedData/Build/Products/Debug-iphonesimulator/DuoDS.app && xcrun simctl launch --console-pty booted org.duods.prototype --diagnostic`.
 4. Scripted checks: add `--selftest` after `--diagnostic`; wait ~20 s, then read `selftest-*` events.
 5. Session events: `<app data container>/Library/Application Support/DuoDS/session-events.jsonl`.
 6. Read the latest entry in this log and `DECISIONS.md` before changing anything.

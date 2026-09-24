@@ -36,6 +36,7 @@ if a.diagnostic:run([sys.executable,'scripts/build-fixture.py'])
 run([sys.executable,'scripts/generate-project.py']+(['--diagnostic'] if a.diagnostic else []))
 dest=a.destination or ('generic/platform=iOS Simulator' if a.sdk=='iphonesimulator' else 'generic/platform=iOS')
 args=['xcodebuild','-project','DuoDS.xcodeproj','-scheme',a.scheme,'-configuration',a.configuration,'-sdk',a.sdk,'-destination',dest,'-derivedDataPath','build/DerivedData','ARCHS=arm64']
-if a.team: args+=['DEVELOPMENT_TEAM='+a.team]
+# Automatic signing needs Xcode to create/refresh the development profile for the device.
+if a.team: args+=['DEVELOPMENT_TEAM='+a.team,'-allowProvisioningUpdates','-allowProvisioningDeviceRegistration']
 else: args+=['CODE_SIGNING_ALLOWED=NO']
 run(args+['build'])
