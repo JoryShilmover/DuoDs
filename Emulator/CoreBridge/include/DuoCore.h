@@ -8,7 +8,7 @@ extern "C" {
 #endif
 typedef struct DuoCore DuoCore;
 typedef struct { uint16_t buttons, touch_x, touch_y; bool touching; } DuoInput;
-typedef struct { double fps, sample_rate; uint64_t frames, video_frames, audio_produced, audio_consumed, audio_underruns, audio_overruns; } DuoStats;
+typedef struct { double fps, sample_rate; uint64_t frames, video_frames, audio_produced, audio_consumed, audio_underruns, audio_overruns, audio_buffered; } DuoStats;
 /* All lifecycle/run/save calls on ONE serial executor. One live instance maximum.
    Frame bytes owned by core host, valid until next run; caller copies before returning.
    Audio consumer is single real-time consumer, no locks/allocations in read_audio.
@@ -20,6 +20,8 @@ void duo_toggle_lid(DuoCore *);
 const uint8_t *duo_frame(DuoCore *, size_t *byte_count, uint64_t *sequence);
 size_t duo_read_audio(DuoCore *, float *interleaved_stereo, size_t frames);
 void duo_clear_audio(DuoCore *);
+/* Frames queued for playback (for pacing). Playback primes to ~60 ms before starting. */
+size_t duo_audio_buffered(DuoCore *);
 void duo_stats(DuoCore *, DuoStats *);
 size_t duo_save_size(DuoCore *);
 bool duo_copy_save(DuoCore *, void *, size_t);

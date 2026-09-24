@@ -153,7 +153,11 @@ private final class RuntimeWorker: @unchecked Sendable {
     private var period: UInt64 = 0
     private var lastPublishedSequence: UInt64 = 0
     var framePending = false
-    private var audioDiscardedBaseline: UInt64 = 0
+    /// Audio pacing: keep ~60 ms queued (the ring primes to this before playing). Emulation runs up to
+    /// ±0.5% off the core rate to hold it there, absorbing clock drift between the host and audio output.
+    private static let audioTarget = 0.06, audioCeiling = 0.15, maxRateAdjust = 0.005
+    private var audioBackedUpSince: UInt64 = 0
+    private var lastAudioCheck: UInt64 = 0
     #if canImport(AVFoundation)
     private var audio: AudioTransport?
     #endif
@@ -211,11 +215,7 @@ private final class RuntimeWorker: @unchecked Sendable {
         audio?.stop()
         #endif
         if let core = core { duo_clear_audio(core) }
-        if let core = core {
-            var stats = DuoStats()
-            duo_stats(core, &stats)
-            audioDiscardedBaseline = stats.audio_produced - stats.audio_consumed
-        }
+        audioBackedUpSince = 0
     }
 
     func stop() {
@@ -226,7 +226,6 @@ private final class RuntimeWorker: @unchecked Sendable {
         if let core = core { duo_destroy(core) }
         core = nil
         lastPublishedSequence = 0
-        audioDiscardedBaseline = 0
     }
 
     private func schedule(_ token: UInt64) {
@@ -242,17 +241,32 @@ private final class RuntimeWorker: @unchecked Sendable {
         guard running, token == generation, let core = core else { return }
         var before = DuoStats()
         duo_stats(core, &before)
-        // Limit queued audio to 120 ms; keeps control latency bounded when the
-        // output route slows down. The core still advances from its AV rate.
-        let cumulativeLead = before.audio_produced - before.audio_consumed
-        let pendingAudio = cumulativeLead > audioDiscardedBaseline
-            ? cumulativeLead - audioDiscardedBaseline : 0
-        if before.sample_rate > 0,
-           Double(pendingAudio) > before.sample_rate * 0.12 {
-            deadline = DispatchTime.now().uptimeNanoseconds + 2_000_000
-            schedule(token)
-            return
+        let now0 = DispatchTime.now().uptimeNanoseconds
+        let buffered = Double(duo_audio_buffered(core))
+        let rate = before.sample_rate
+        #if canImport(AVFoundation)
+        // Watchdog: the system can stop the engine (route/config change, media services reset).
+        if now0 &- lastAudioCheck > 1_000_000_000 {
+            lastAudioCheck = now0
+            if let audio, !audio.isRunning { restartAudio(core) }
         }
+        #endif
+        // Bound queued audio (control latency) — but never freeze: if output stays backed up for
+        // 250 ms, drop the queue and restart output rather than stall emulation.
+        if rate > 0, buffered > rate * Self.audioCeiling {
+            if audioBackedUpSince == 0 { audioBackedUpSince = now0 }
+            if now0 &- audioBackedUpSince < 250_000_000 {
+                deadline = now0 + 2_000_000
+                schedule(token)
+                return
+            }
+            #if canImport(AVFoundation)
+            restartAudio(core)
+            #else
+            duo_clear_audio(core)
+            #endif
+        }
+        audioBackedUpSince = 0
         let native = DuoInput(buttons: input.buttons, touch_x: input.touchX,
                               touch_y: input.touchY, touching: input.touching)
         if !duo_run(core, native) {
@@ -272,10 +286,26 @@ private final class RuntimeWorker: @unchecked Sendable {
             publish?(Data(bytes: bytes, count: count), sequence, statistics)
         }
         let now = DispatchTime.now().uptimeNanoseconds
-        deadline = deadline &+ period
+        // Above target → slightly longer frame period; below → slightly shorter.
+        var step = Double(period)
+        if rate > 0 {
+            let error = max(-1, min(1, (buffered - rate * Self.audioTarget) / (rate * Self.audioTarget)))
+            step *= 1 + Self.maxRateAdjust * error
+        }
+        deadline = deadline &+ UInt64(step)
         if now > deadline, now - deadline > period * 3 { deadline = now }
         schedule(token)
     }
+
+    #if canImport(AVFoundation)
+    /// Engine must be stopped before clearing: the ring's clear() requires a quiescent consumer.
+    private func restartAudio(_ core: OpaquePointer) {
+        audio?.stop()
+        duo_clear_audio(core)
+        try? audio?.start()
+        audioBackedUpSince = 0
+    }
+    #endif
 
     func snapshotBattery() throws -> Data? {
         guard let core = core else { throw RuntimeError.unavailable("No game is loaded") }
@@ -325,12 +355,7 @@ private final class RuntimeWorker: @unchecked Sendable {
         let success = data.withUnsafeBytes { raw in
             duo_unserialize(core, raw.baseAddress, data.count)
         }
-        if success {
-            duo_clear_audio(core)
-            var stats = DuoStats()
-            duo_stats(core, &stats)
-            audioDiscardedBaseline = stats.audio_produced - stats.audio_consumed
-        }
+        if success { duo_clear_audio(core) } // restored state re-primes the cushion
         #if canImport(AVFoundation)
         if restartAudio {
             do { try audio?.start() }

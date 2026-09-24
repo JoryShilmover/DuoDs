@@ -226,6 +226,7 @@ bool duo_load(DuoCore* c, const char* rom_path) {
     retro_get_system_av_info(&av);
     c->fps = av.timing.fps;
     c->sample_rate = av.timing.sample_rate;
+    c->audio.set_prime(static_cast<size_t>(c->sample_rate * 0.06)); // ~60 ms playback cushion
     if (!(c->fps > 0 && std::isfinite(c->fps) && c->sample_rate > 0 && std::isfinite(c->sample_rate))) {
         c->error = "Core reported an invalid frame or audio rate"; return false;
     }
@@ -262,6 +263,7 @@ size_t duo_read_audio(DuoCore* c, float* stereo, size_t frames) {
     return c->audio.pop(stereo, frames);
 }
 void duo_clear_audio(DuoCore* c) { if (c) c->audio.clear(); }
+size_t duo_audio_buffered(DuoCore* c) { return c && c == current() ? c->audio.buffered() : 0; }
 void duo_stats(DuoCore* c, DuoStats* stats) {
     if (!stats) return;
     *stats = {};
@@ -269,7 +271,7 @@ void duo_stats(DuoCore* c, DuoStats* stats) {
     stats->fps = c->fps; stats->sample_rate = c->sample_rate;
     stats->frames = c->frames; stats->video_frames = c->video_frames;
     stats->audio_produced = c->audio.produced(); stats->audio_consumed = c->audio.consumed();
-    stats->audio_underruns = c->audio.underruns(); stats->audio_overruns = c->audio.overruns();
+    stats->audio_underruns = c->audio.underruns(); stats->audio_overruns = c->audio.overruns(); stats->audio_buffered = c->audio.buffered();
 }
 size_t duo_save_size(DuoCore* c) { return c && c->loaded ? retro_get_memory_size(RETRO_MEMORY_SAVE_RAM) : 0; }
 bool duo_copy_save(DuoCore* c, void* bytes, size_t size) {

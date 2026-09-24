@@ -30,12 +30,22 @@ public:
     }
 
     // Returns the number of real frames. The full destination is always
-    // initialized, including underrun silence.
+    // initialized, including underrun silence. Until `prime` frames are buffered
+    // (at start, and again after running dry) it plays silence without consuming,
+    // so playback begins with a cushion instead of crackling on an empty ring.
     size_t pop(float* stereo, size_t frames) noexcept {
         if (!stereo) return 0;
         const uint64_t read = read_.load(std::memory_order_relaxed);
         const uint64_t write = write_.load(std::memory_order_acquire);
-        const size_t accepted = std::min(frames, static_cast<size_t>(write - read));
+        const size_t queued = static_cast<size_t>(write - read);
+        if (!primed_) {
+            if (queued < prime_.load(std::memory_order_relaxed)) {
+                std::fill(stereo, stereo + frames * 2, 0.0f);
+                return 0;
+            }
+            primed_ = true;
+        }
+        const size_t accepted = std::min(frames, queued);
         for (size_t i = 0; i < accepted; ++i) {
             const size_t offset = ((read + i) % capacity) * 2;
             stereo[i * 2] = samples_[offset];
@@ -44,13 +54,24 @@ public:
         std::fill(stereo + accepted * 2, stereo + frames * 2, 0.0f);
         read_.store(read + accepted, std::memory_order_release);
         consumed_.fetch_add(accepted, std::memory_order_relaxed);
-        if (accepted < frames) underruns_.fetch_add(1, std::memory_order_relaxed);
+        if (accepted < frames) {
+            underruns_.fetch_add(1, std::memory_order_relaxed);
+            primed_ = false; // rebuild the cushion rather than stutter frame by frame
+        }
         return accepted;
     }
+
+    /// Frames queued and not yet played. Safe from either side.
+    size_t buffered() const noexcept {
+        return static_cast<size_t>(write_.load(std::memory_order_acquire) - read_.load(std::memory_order_acquire));
+    }
+
+    void set_prime(size_t frames) noexcept { prime_.store(std::min(frames, capacity / 2), std::memory_order_relaxed); }
 
     // Caller first quiesces the consumer; this is an executor-only operation.
     void clear() noexcept {
         read_.store(write_.load(std::memory_order_acquire), std::memory_order_release);
+        primed_ = false;
     }
 
     uint64_t produced() const noexcept { return produced_.load(std::memory_order_relaxed); }
@@ -62,4 +83,6 @@ private:
     std::array<float, capacity * 2> samples_{};
     std::atomic<uint64_t> write_{0}, read_{0};
     std::atomic<uint64_t> produced_{0}, consumed_{0}, underruns_{0}, overruns_{0};
+    std::atomic<size_t> prime_{0};
+    bool primed_ = false; // consumer-only, reset by clear() while the consumer is stopped
 };

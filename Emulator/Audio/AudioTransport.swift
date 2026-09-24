@@ -49,6 +49,8 @@ final class AudioTransport {
         try engine.start()
     }
 
+    var isRunning: Bool { engine.isRunning }
+
     // Called before duo_clear_audio or duo_destroy. AVAudioEngine.stop waits for
     // the render path to stop using the callback's captured core pointer.
     func stop() {

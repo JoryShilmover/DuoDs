@@ -90,6 +90,20 @@ int main() {
     assert(ring.push(huge.data(), SPSCAudioRing::capacity + 1) == SPSCAudioRing::capacity);
     assert(ring.overruns() == 1);
 
+    // Priming: silence without consuming until the cushion exists; re-prime after running dry.
+    SPSCAudioRing primed;
+    primed.set_prime(4);
+    const int16_t two[4] = {1000, 1000, 1000, 1000};
+    float out[8];
+    assert(primed.push(two, 2) == 2);
+    assert(primed.pop(out, 2) == 0 && out[0] == 0.0f && primed.underruns() == 0 && primed.buffered() == 2);
+    assert(primed.push(two, 2) == 2);
+    assert(primed.pop(out, 4) == 4 && out[0] > 0.0f && primed.buffered() == 0);
+    assert(primed.pop(out, 1) == 0 && primed.underruns() == 1);      // ran dry: counted once
+    assert(primed.push(two, 2) == 2 && primed.pop(out, 2) == 0);    // then re-primes instead of stuttering
+    primed.clear();
+    assert(primed.buffered() == 0);
+
     DuoCore* core = duo_create("/system", "/save");
     assert(core && !duo_create("/system", "/save"));
     assert(!duo_load(core, "/nonexistent/rom.nds"));
@@ -130,8 +144,11 @@ int main() {
     assert(frame[0] == 0x33 && frame[1] == 0x22 && frame[2] == 0x11 && frame[3] == 0xff);
     assert(frame[frame_size - 1] == 0xff);
     float native_audio[8]{};
-    assert(duo_read_audio(core, native_audio, 4) == 4);
-    assert(native_audio[0] > 0.99f && native_audio[1] == -1.0f);
+    // Load sets a ~60 ms prime (1966 frames at 32768 Hz); a few test frames stay queued as silence.
+    const size_t queued = duo_audio_buffered(core);
+    assert(queued > 0 && queued < 1966);
+    assert(duo_read_audio(core, native_audio, 4) == 0 && native_audio[0] == 0.0f);
+    assert(duo_audio_buffered(core) == queued);
     assert(duo_save_size(core) == 4);
     uint8_t copied[4]{};
     assert(!duo_copy_save(core, copied, 3));

@@ -48,7 +48,7 @@ Raw evidence is local only, under ignored `artifacts/poc/2026-09-23-resume/`: `l
 
 | Severity | Item |
 |---|---|
-| S2 | Audio: thin lead (5–7 underruns at each boot or resume, about 25 ms steady), no drift correction, silent stall if the engine stops unobserved. Must be measured on device (V11) |
+| Fixed | Audio lead/drift/stall (D16): 0 underruns on device over boot, resume, relaunch and 70 s (diagnostic). V11 30-minute capture on the target device still required |
 | S3 | UI/control overhaul: first DS Lite–style pass done (D15). Remaining: user-adjustable placement/size, opacity, left-handed option, V18 hands-on trial |
 | S2 (unverified) | Scene `owner` is never released on scene disconnect, so a new scene may be locked out |
 | S3 | Battery flush is skipped after a runtime core failure (≤10 s of cartridge writes lost) |
