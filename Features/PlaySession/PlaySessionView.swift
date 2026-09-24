@@ -4,6 +4,24 @@ import SwiftUI
 import MetalKit
 import CoreImage
 
+/// V09 evidence: what actually reached the screen. Counted on the top-screen view only (both views
+/// present the same DSFrame). `skipped` counts core frames never shown between two presented ones.
+@MainActor
+public final class PresentationStats {
+    public static let shared = PresentationStats()
+    public private(set) var unique: UInt64 = 0
+    public private(set) var repeated: UInt64 = 0
+    public private(set) var skipped: UInt64 = 0
+    private var lastSequence: UInt64 = 0
+    func presented(_ sequence: UInt64) {
+        if sequence == lastSequence { repeated += 1; return }
+        if lastSequence != 0, sequence > lastSequence + 1 { skipped += sequence - lastSequence - 1 }
+        unique += 1
+        lastSequence = sequence
+    }
+    public func reset() { unique = 0; repeated = 0; skipped = 0; lastSequence = 0 }
+}
+
 /// Presentation-only view. Its owner supplies copied frames and forwards input snapshots to the runtime.
 @MainActor
 public final class PlaySessionCanvas: UIView {
@@ -12,6 +30,10 @@ public final class PlaySessionCanvas: UIView {
     public var onLidToggle: (() -> Void)?
     /// Diagnostics only: reports each new geometry solution (e.g. fold/unfold, resize).
     public var onGeometry: ((DisplayEnvironment, LayoutSolution) -> Void)?
+    /// V10 evidence: a stylus contact began at `point` (view space) over `lowerScreen`; `uptime` is the touch timestamp.
+    public var onStylusSample: ((CGPoint, CGRect, TimeInterval) -> Void)? {
+        didSet { inputSurface.onStylusSample = onStylusSample }
+    }
     public var inputEpoch = 0 { didSet { if inputEpoch != oldValue { cancelInput() } } }
     public var layoutPreference: ScreenLayoutPreference = .automatic { didSet { lastEnvironment = nil; refreshGeometry() } }
     public var swapScreens = false { didSet { lastEnvironment = nil; refreshGeometry() } }
@@ -113,6 +135,7 @@ public struct PlaySessionView: UIViewRepresentable {
     public var onPause: () -> Void
     public var onLidToggle: () -> Void
     public var onGeometry: (DisplayEnvironment, LayoutSolution) -> Void
+    public var onStylusSample: (CGPoint, CGRect, TimeInterval) -> Void
     /// Changes when the owner releases all input (pause, interruption); held touches/buttons are cancelled.
     public var inputEpoch: Int
 
@@ -120,7 +143,8 @@ public struct PlaySessionView: UIViewRepresentable {
                 swapScreens: Bool = false, onInput: @escaping (DSInput) -> Void,
                 onPause: @escaping () -> Void = {}, onLidToggle: @escaping () -> Void = {},
                 onGeometry: @escaping (DisplayEnvironment, LayoutSolution) -> Void = { _, _ in },
-                inputEpoch: Int = 0) {
+                inputEpoch: Int = 0,
+                onStylusSample: @escaping (CGPoint, CGRect, TimeInterval) -> Void = { _, _, _ in }) {
         self.frame = frame
         self.preference = preference
         self.swapScreens = swapScreens
@@ -129,6 +153,7 @@ public struct PlaySessionView: UIViewRepresentable {
         self.onLidToggle = onLidToggle
         self.onGeometry = onGeometry
         self.inputEpoch = inputEpoch
+        self.onStylusSample = onStylusSample
     }
 
     public func makeUIView(context: Context) -> PlaySessionCanvas { PlaySessionCanvas(frame: .zero) }
@@ -139,6 +164,7 @@ public struct PlaySessionView: UIViewRepresentable {
         view.onLidToggle = onLidToggle
         view.onGeometry = onGeometry
         view.inputEpoch = inputEpoch
+        view.onStylusSample = onStylusSample
         view.layoutPreference = preference
         view.swapScreens = swapScreens
         view.update(frame: frame)
@@ -149,6 +175,7 @@ public struct PlaySessionView: UIViewRepresentable {
 private final class DSScreenView: MTKView, MTKViewDelegate {
     private let screenIndex: Int
     private var image: CIImage?
+    private var sequence: UInt64 = 0
     private var ciContext: CIContext?
 
     init(screenIndex: Int) {
@@ -180,6 +207,7 @@ private final class DSScreenView: MTKView, MTKViewDelegate {
             return
         }
         image = CIImage(cgImage: cropped)
+        sequence = frame.sequence
         setNeedsDisplay()
     }
 
@@ -195,6 +223,7 @@ private final class DSScreenView: MTKView, MTKViewDelegate {
                          colorSpace: CGColorSpaceCreateDeviceRGB())
         buffer.present(drawable)
         buffer.commit()
+        if screenIndex == 0 { PresentationStats.shared.presented(sequence) }
     }
 }
 
@@ -205,6 +234,7 @@ private final class TouchSurface: UIView {
     var onChange: (() -> Void)?
     var onPause: (() -> Void)?
     var onLid: (() -> Void)?
+    var onStylusSample: ((CGPoint, CGRect, TimeInterval) -> Void)?
     private enum Contact { case stylus(UInt64), dpad(Set<DSButton>), face(DSButton?), button(DSButton), pause, lid }
     private var contacts: [ObjectIdentifier: Contact] = [:]
     private var nextID: UInt64 = 1
@@ -280,6 +310,7 @@ private final class TouchSurface: UIView {
             } else if router?.beginStylus(id: nextID, at: point, lowerScreen: lowerScreen) == true {
                 contacts[key] = .stylus(nextID)
                 nextID &+= 1
+                onStylusSample?(point, lowerScreen, touch.timestamp)
             }
         }
         setNeedsDisplay()

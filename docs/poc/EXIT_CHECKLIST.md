@@ -25,9 +25,9 @@ Legend: **[agent]** an agent can do it alone · **[you]** needs you (device, pla
 | Emulated lid (V16): visible in-game effect | Wired and unit-tested; not observed in a game | [you] |
 | Scene ownership release and battery flush after core failure | Done (`8e08fd9`) | — |
 | Homebrew SD (DLDI) save durability | Unknown | [agent] |
-| Presentation metrics (unique/duplicate/dropped frames) for V09 | Not instrumented | [agent] |
-| Touch accuracy and latency instrumentation for V10 (≤1 DS px, p95 ≤100 ms) | Not instrumented | [agent] |
-| Energy/battery sampling for V12 | Thermal state only | [agent] |
+| Presentation metrics (V09) | Instrumented; 99.7% unique on simulator | [you] device run |
+| Touch accuracy and latency (V10) | Instrumented (`touch-down`/`touch-consumed`) | [you] tap test on device |
+| Energy/battery sampling (V12) | Battery level/state, low power, brightness, thermal logged | [you] device run |
 
 ## 3. UI follow-ups (after the DS Lite–style pass)
 - [ ] **[you]** Hands-on feel in portrait and landscape: size, reach, anything misplaced.

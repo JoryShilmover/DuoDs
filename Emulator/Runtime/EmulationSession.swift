@@ -46,6 +46,9 @@ public enum RuntimeError: LocalizedError {
                 self.stats = statistics
             }
         }
+        worker.touchConsumed = { [weak self] latency in
+            Task { @MainActor [weak self] in self?.onTouchConsumed?(latency) }
+        }
         worker.fail = { [weak self] message in
             Task { @MainActor [weak self] in
                 self?.errorMessage = message
@@ -111,6 +114,14 @@ public enum RuntimeError: LocalizedError {
         worker.queue.async { worker.input = input }
     }
 
+    /// V10: timestamp (system uptime, seconds) of a stylus touch-down; the worker reports when a core
+    /// frame first consumes a touching input after it.
+    public var onTouchConsumed: ((Double) -> Void)?
+    public func markTouch(uptime: Double) {
+        let worker = worker
+        worker.queue.async { worker.pendingTouch = uptime }
+    }
+
     public func releaseInputs() {
         setInput(DSInput())
         inputEpoch &+= 1
@@ -147,6 +158,8 @@ private final class RuntimeWorker: @unchecked Sendable {
     var input = DSInput()
     var publish: ((Data, UInt64, DuoStats) -> Void)?
     var fail: ((String) -> Void)?
+    var touchConsumed: ((Double) -> Void)?
+    var pendingTouch: Double = 0
     private var generation: UInt64 = 0
     private var running = false
     private var deadline: UInt64 = 0
@@ -274,6 +287,10 @@ private final class RuntimeWorker: @unchecked Sendable {
             pause()
             fail?(message)
             return
+        }
+        if pendingTouch > 0, input.touching {
+            touchConsumed?(ProcessInfo.processInfo.systemUptime - pendingTouch)
+            pendingTouch = 0
         }
         var count = 0
         var sequence: UInt64 = 0

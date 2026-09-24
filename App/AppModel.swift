@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import AVFoundation
 import os
+import UIKit
 import UniformTypeIdentifiers
 
 @MainActor final class AppModel: ObservableObject {
@@ -32,10 +33,14 @@ import UniformTypeIdentifiers
         library = LibraryStore(root: root)
         persistence = PersistenceStore(root: root)
         eventURL = root.appendingPathComponent("session-events.jsonl")
+        UIDevice.current.isBatteryMonitoringEnabled = true
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         reload()
         interruption = NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in await self?.pauseAndSave(reason: "audio-interruption") }
+        }
+        session.onTouchConsumed = { [weak self] latency in
+            self?.record("touch-consumed", detail: String(format: "latency_ms=%.1f", latency * 1000))
         }
         routeChange = NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] note in
             // Pause only when output disappears (e.g. headphones unplugged); the app's own category/activation changes also post this.
@@ -97,6 +102,7 @@ import UniformTypeIdentifiers
                 await session.stop()
             } else if session.phase == .failed { await session.stop() }
             current = game
+            PresentationStats.shared.reset()
             let directory = library.gameDirectory(for: game)
             try await session.boot(romURL: library.romURL(for: game), saveDirectory: directory.appendingPathComponent("CoreSaves"), systemDirectory: directory.appendingPathComponent("System"))
             if let battery = try persistence.readBattery(gameID: game.id) { try await session.restoreBattery(battery) }
@@ -242,6 +248,15 @@ import UniformTypeIdentifiers
             if arguments.contains("--selftest-states") { await runStateSelfTest() }
         }
     }
+    /// V10: log the raw contact and its DS mapping, so accuracy can be recomputed independently,
+    /// then time when the core consumes it.
+    func recordStylus(_ point: CGPoint, lowerScreen: CGRect, uptime: Double) {
+        let mapped = InputRouter.mapTouch(point, in: lowerScreen)
+        record("touch-down", detail: String(format: "view=%.2f,%.2f rect=%.2f,%.2f,%.2f,%.2f ds=%d,%d event_uptime=%.4f",
+            point.x, point.y, lowerScreen.minX, lowerScreen.minY, lowerScreen.width, lowerScreen.height,
+            Int(mapped?.x ?? 999), Int(mapped?.y ?? 999), uptime))
+        session.markTouch(uptime: uptime)
+    }
     func recordGeometry(_ environment: DisplayEnvironment, _ solution: LayoutSolution) {
         func r(_ c: CGRect) -> String { String(format: "%.0f,%.0f %.0fx%.0f", c.minX, c.minY, c.width, c.height) }
         let regions = environment.reservedRegions.map { "\($0.kind):\(r($0.frame))" }.joined(separator: ";")
@@ -251,6 +266,17 @@ import UniformTypeIdentifiers
         let s = session.stats
         var fields: [String: Any] = ["event":event,"monotonic":ProcessInfo.processInfo.systemUptime,"phase":session.phase.rawValue,"frames":s.frames,"video_frames":s.video_frames,"audio_produced":s.audio_produced,"audio_consumed":s.audio_consumed,"audio_underruns":s.audio_underruns,"audio_overruns":s.audio_overruns,"audio_buffered_ms":s.sample_rate > 0 ? Int(Double(s.audio_buffered) * 1000 / s.sample_rate) : 0,"core_fps":s.fps,"sample_rate":s.sample_rate,"thermal_state":ProcessInfo.processInfo.thermalState.rawValue,"session":"single-process-owner"]
         if let detail { fields["detail"] = detail }
+        // V12 conditions: battery, low power, brightness (thermal state above).
+        let device = UIDevice.current
+        fields["battery_level"] = device.batteryLevel
+        fields["battery_state"] = device.batteryState.rawValue
+        fields["low_power_mode"] = ProcessInfo.processInfo.isLowPowerModeEnabled
+        fields["brightness"] = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.brightness ?? -1
+        // V09: presentation counters since boot (compare `presented_unique` with `video_frames`).
+        let shown = PresentationStats.shared
+        fields["presented_unique"] = shown.unique
+        fields["presented_repeated"] = shown.repeated
+        fields["presented_skipped"] = shown.skipped
         if let frame = session.frame {
             // Evidence that real pixels reached the app: count non-black pixels per DS screen.
             var lit = [0, 0]; var sum = [[0, 0, 0], [0, 0, 0]] // per screen R,G,B
