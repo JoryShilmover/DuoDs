@@ -52,7 +52,7 @@ def device_info(args):
     if args.device:
         text = run(["xcrun", "devicectl", "device", "info", "details", "--device", args.device]).stdout
         pick = lambda key: (re.search(rf"{key}:\s*(.+)", text) or [None, None])[1]
-        return {"kind": "physical", "model": pick("marketingName") or pick("productType"),
+        return {"kind": "physical", "model": pick("Marketing Name") or pick("Product Type"),
                 "os": pick("osVersionNumber") or pick("OS Version"), "identifier_class": "UDID (not recorded)"}
     if args.simulator:
         text = run(["xcrun", "simctl", "list", "devices", "-j"]).stdout
@@ -106,6 +106,8 @@ def analyse(events):
             sessions.append(current)
         if current is not None:
             current["events"].append(e)
+            if e["event"] == "stop":  # counters reset at stop; idle time after it is not part of the session
+                current = None
     out = []
     for s in sessions:
         ev = s["events"]
@@ -121,7 +123,8 @@ def analyse(events):
         five = {}
         for w in speed_windows:
             five.setdefault(int(w["t"] // 300), []).append(w["ratio"])
-        last = ev[-1]
+        # Final counters: the last event before stop still carrying them (stop itself reports zeros).
+        last = next((e for e in reversed(ev) if e["frames"] > 0), ev[-1])
         first_run = running[0] if running else ev[0]
         touches = [e for e in ev if e["event"] == "touch-down"]
         accuracy = []
@@ -136,7 +139,7 @@ def analyse(events):
             accuracy.append(max(abs(ex - dx), abs(ey - dy)))
         latencies = [float(re.search(r"latency_ms=([\d.]+)", e["detail"]).group(1))
                      for e in ev if e["event"] == "touch-consumed" and "latency_ms" in e.get("detail", "")]
-        duration = last["monotonic"] - start
+        duration = ev[-1]["monotonic"] - start
         out.append({
             "game": s["game"], "duration_s": round(duration, 1), "frames": last["frames"],
             "core_target_fps": first_run.get("core_fps"),

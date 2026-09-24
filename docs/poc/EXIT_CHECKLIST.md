@@ -1,6 +1,6 @@
 # Exit checklist: from proof of concept to product work
 
-Status as of 2026-09-23 (updated through the agent-only tasks). Criteria and case IDs (V01–V20, G0–G4) come from [VALIDATION.md](VALIDATION.md). Current evidence is in [REPORT.md](REPORT.md).
+Status as of 2026-09-24 (updated after the first device playtest). Criteria and case IDs (V01–V20, G0–G4) come from [VALIDATION.md](VALIDATION.md). Current evidence is in [REPORT.md](REPORT.md).
 
 The plan's **GO** requires G0–G4 to pass, including a physical Duo (G3). The Duo is not released, so the POC cannot reach GO on the original scope yet. Two ways forward:
 
@@ -10,16 +10,17 @@ The plan's **GO** requires G0–G4 to pass, including a physical Duo (G3). The D
 Legend: **[agent]** an agent can do it alone · **[you]** needs you (device, play, judgment) · **[Duo]** blocked until Duo hardware exists · **[decide]** a decision for you.
 
 ## 1. Finish G1 on the physical iPhone
-- [ ] **[you]** V03: 5-minute play trace with `user-01` (planned for this evening). Pull logs; check speed ≥ core target, underruns and thermal state.
-- [ ] **[you]** V02: on-device cartridge save survives close and relaunch (the simulator already passed).
-- [ ] **[you]** V02: stylus taps land where touched on the lower screen.
+- [x] **[you]** V03: 11.3 min of `user-01` at 100.0% of core target, 0 underruns, thermal fair at most (`artifacts/poc/2026-09-24-overnight-device/`).
+- [x] **[you]** V02: on-device cartridge save survives close and relaunch (user-observed).
+- [x] **[you]** V02: stylus taps land where touched (204 taps, ≤1 DS px mapping error).
+- [x] **[you]** ⋯ menu items respond after the fix; manual Save/Restore state works on device (V20).
 - [ ] **[agent]** Use a release-like build for G1/G3 numbers. Current builds are development-signed (`get-task-allow`); the report and the evidence manifest record this.
 
 ## 2. Features that are missing or unverified
 | Item | State | Owner |
 |---|---|---|
 | Microphone input (V15): permission flow, core mic feed, safe fallback when denied | Implemented; passes on simulator (granted and denied) | [you] device: deny → grant → revoke, and a game that uses the mic |
-| Manual save states (V20): save/restore with `user-01`; reject wrong-ROM, corrupt and old-version states | Done on simulator; confirm on device | [you] |
+| Manual save states (V20): save/restore with `user-01`; reject wrong-ROM, corrupt and old-version states | Done on simulator and iPhone (round trip user-observed); rejection cases unit-tested | — |
 | Physical controller (V17): connect, disconnect mid-game, no stuck buttons | Code exists; untested | [you] (needs a controller) |
 | Apple Pencil | Untested | [you] if you have one |
 | Emulated lid (V16): visible in-game effect | Wired and unit-tested; not observed in a game | [you] |

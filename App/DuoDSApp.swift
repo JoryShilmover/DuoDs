@@ -7,7 +7,9 @@ import UniformTypeIdentifiers
 
 struct RootView: View {
     @StateObject private var model = AppModel.shared
-    @ObservedObject private var session = EmulationSession.shared
+    // Not observed here: the session publishes every frame, and re-evaluating this body at 60 Hz rebuilds
+    // the toolbar Menu while it is open, which cancels taps on its items. PlayArea observes it instead.
+    private let session = EmulationSession.shared
     @Environment(\.scenePhase) private var scenePhase
     @State private var sceneID = UUID()
     @State private var importing = false
@@ -31,29 +33,8 @@ struct RootView: View {
                         Button("Move game here") { Task { await model.takeOver(sceneID) } }.buttonStyle(.borderedProminent)
                     }
                 } else if model.current != nil {
-                    VStack(spacing: 0) {
-                        PlaySessionView(frame: session.frame, preference: preference, swapScreens: swapped,
-                                        onInput: { session.setInput($0) },
-                                        onPause: { Task { await model.pauseAndSave(reason: "explicit-pause") } },
-                                        onLidToggle: { session.toggleLid() },
-                                        onGeometry: { model.recordGeometry($0, $1) },
-                                        inputEpoch: session.inputEpoch,
-                                        onStylusSample: { model.recordStylus($0, lowerScreen: $1, uptime: $2) },
-                                        onMicrophone: { held in Task { await model.microphone(held: held) } })
-                            .controlSettings(scale: controlScale, opacity: controlOpacity, leftHanded: leftHanded)
-                        // Overlay, not a stacked row: pausing must not resize the play area and move the DS screens.
-                        .overlay {
-                            if session.phase == .paused {
-                                Button("Resume") { Task { await model.resume() } }.buttonStyle(.borderedProminent).controlSize(.large)
-                            }
-                        }
-                        HStack {
-                            Text(session.phase.rawValue.capitalized)
-                            Spacer()
-                            Text("\(session.stats.frames) frames · \(session.stats.fps, specifier: "%.2f") Hz core")
-                        }.font(.caption.monospacedDigit()).padding(8)
-                        if let error = session.errorMessage { Text(error).foregroundStyle(.red).padding() }
-                    }
+                    PlayArea(session: session, preference: preference, swapped: swapped,
+                             controlScale: controlScale, controlOpacity: controlOpacity, leftHanded: leftHanded)
                 } else {
                     List {
                         Section {
@@ -128,5 +109,42 @@ struct RootView: View {
         .task { model.claim(sceneID); await model.active(scenePhase == .active, scene: sceneID) }
         .onDisappear { Task { await model.release(sceneID) } }
         .onChange(of: scenePhase) { _, phase in Task { await model.active(phase == .active, scene: sceneID) } }
+    }
+}
+
+/// The only view that observes the per-frame session updates.
+struct PlayArea: View {
+    @ObservedObject var session: EmulationSession
+    let model = AppModel.shared
+    let preference: ScreenLayoutPreference
+    let swapped: Bool
+    let controlScale: Double
+    let controlOpacity: Double
+    let leftHanded: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            PlaySessionView(frame: session.frame, preference: preference, swapScreens: swapped,
+                            onInput: { session.setInput($0) },
+                            onPause: { Task { await model.pauseAndSave(reason: "explicit-pause") } },
+                            onLidToggle: { session.toggleLid() },
+                            onGeometry: { model.recordGeometry($0, $1) },
+                            inputEpoch: session.inputEpoch,
+                            onStylusSample: { model.recordStylus($0, lowerScreen: $1, uptime: $2) },
+                            onMicrophone: { held in Task { await model.microphone(held: held) } })
+                .controlSettings(scale: controlScale, opacity: controlOpacity, leftHanded: leftHanded)
+            // Overlay, not a stacked row: pausing must not resize the play area and move the DS screens.
+            .overlay {
+                if session.phase == .paused {
+                    Button("Resume") { Task { await model.resume() } }.buttonStyle(.borderedProminent).controlSize(.large)
+                }
+            }
+            HStack {
+                Text(session.phase.rawValue.capitalized)
+                Spacer()
+                Text("\(session.stats.frames) frames · \(session.stats.fps, specifier: "%.2f") Hz core")
+            }.font(.caption.monospacedDigit()).padding(8)
+            if let error = session.errorMessage { Text(error).foregroundStyle(.red).padding() }
+        }
     }
 }
