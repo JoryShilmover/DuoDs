@@ -34,7 +34,7 @@ settings={
  'PRODUCT_BUNDLE_IDENTIFIER':'org.duods.prototype','PRODUCT_NAME':'DuoDS','SDKROOT':'iphoneos','IPHONEOS_DEPLOYMENT_TARGET':'17.0',
  'TARGETED_DEVICE_FAMILY':'1,2','SWIFT_VERSION':'5.0','CLANG_CXX_LANGUAGE_STANDARD':'c++17','CLANG_ENABLE_MODULES':'YES',
  'GENERATE_INFOPLIST_FILE':'YES','INFOPLIST_KEY_UILaunchScreen_Generation':'YES','INFOPLIST_KEY_UIApplicationSceneManifest_Generation':'YES',
- 'INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents':'YES','INFOPLIST_KEY_NSMicrophoneUsageDescription':'Enable microphone input for the Nintendo DS game you are playing.',
+ 'INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents':'YES','INFOPLIST_FILE':'App/Info.plist','INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace':'YES','INFOPLIST_KEY_NSMicrophoneUsageDescription':'Enable microphone input for the Nintendo DS game you are playing.',
  'INFOPLIST_KEY_UISupportedInterfaceOrientations':'UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortraitUpsideDown',
  'CODE_SIGN_STYLE':'Automatic','SWIFT_OBJC_BRIDGING_HEADER':'Emulator/CoreBridge/include/DuoCore.h',
  'HEADER_SEARCH_PATHS':'$(inherited) "$(SRCROOT)/Emulator/CoreBridge/include"',
