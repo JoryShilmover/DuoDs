@@ -13,7 +13,7 @@ Legend: **[agent]** an agent can do it alone · **[you]** needs you (device, pla
 - [ ] **[you]** V03: 5-minute play trace with `user-01` (planned for this evening). Pull logs; check speed ≥ core target, underruns and thermal state.
 - [ ] **[you]** V02: on-device cartridge save survives close and relaunch (the simulator already passed).
 - [ ] **[you]** V02: stylus taps land where touched on the lower screen.
-- [ ] **[agent]** Use a release-like build for G1/G3 numbers. Current builds are development-signed (`get-task-allow`). Record the signing limits in the report.
+- [ ] **[agent]** Use a release-like build for G1/G3 numbers. Current builds are development-signed (`get-task-allow`); the report and the evidence manifest record this.
 
 ## 2. Features that are missing or unverified
 | Item | State | Owner |
