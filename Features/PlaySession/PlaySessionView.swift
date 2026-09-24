@@ -39,6 +39,15 @@ public final class PlaySessionCanvas: UIView {
         didSet { inputSurface.onMicrophone = onMicrophone }
     }
     public var inputEpoch = 0 { didSet { if inputEpoch != oldValue { cancelInput() } } }
+    /// User control settings: size (0.6–1), opacity (0.2–1), and left-handed swap.
+    public var controlScale: CGFloat = 1 { didSet { if controlScale != oldValue { reconfigureControls() } } }
+    public var controlOpacity: CGFloat = 1 { didSet { inputSurface.alpha = max(0.2, min(1, controlOpacity)) } }
+    public var leftHanded = false { didSet { if leftHanded != oldValue { reconfigureControls() } } }
+    private func reconfigureControls() {
+        guard let solution = lastSolution else { return }
+        inputSurface.cancelContacts()
+        inputSurface.configure(solution: solution, scale: controlScale, leftHanded: leftHanded)
+    }
     public var layoutPreference: ScreenLayoutPreference = .automatic { didSet { lastEnvironment = nil; refreshGeometry() } }
     public var swapScreens = false { didSet { lastEnvironment = nil; refreshGeometry() } }
 
@@ -123,7 +132,7 @@ public final class PlaySessionCanvas: UIView {
         topView.frame = solution.upperScreen
         bottomView.frame = solution.lowerScreen
         inputSurface.frame = bounds
-        inputSurface.configure(solution: solution)
+        inputSurface.configure(solution: solution, scale: controlScale, leftHanded: leftHanded)
         let changed = solution != lastSolution
         lastEnvironment = environment
         lastSolution = solution
@@ -141,6 +150,9 @@ public struct PlaySessionView: UIViewRepresentable {
     public var onGeometry: (DisplayEnvironment, LayoutSolution) -> Void
     public var onStylusSample: (CGPoint, CGRect, TimeInterval) -> Void
     public var onMicrophone: (Bool) -> Void
+    public var controlScale: CGFloat = 1
+    public var controlOpacity: CGFloat = 1
+    public var leftHanded = false
     /// Changes when the owner releases all input (pause, interruption); held touches/buttons are cancelled.
     public var inputEpoch: Int
 
@@ -173,6 +185,9 @@ public struct PlaySessionView: UIViewRepresentable {
         view.inputEpoch = inputEpoch
         view.onStylusSample = onStylusSample
         view.onMicrophone = onMicrophone
+        view.controlScale = controlScale
+        view.controlOpacity = controlOpacity
+        view.leftHanded = leftHanded
         view.layoutPreference = preference
         view.swapScreens = swapScreens
         view.update(frame: frame)
@@ -260,10 +275,11 @@ private final class TouchSurface: UIView {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
 
-    func configure(solution: LayoutSolution) {
+    func configure(solution: LayoutSolution, scale: CGFloat, leftHanded: Bool) {
         lowerScreen = solution.lowerScreen
         layout = solution.controlRegions.count == 2
-            ? ControlLayout(left: solution.controlRegions[0], right: solution.controlRegions[1]) : nil
+            ? ControlLayout(left: solution.controlRegions[0], right: solution.controlRegions[1],
+                            scale: scale, leftHanded: leftHanded) : nil
         setNeedsDisplay()
     }
 
@@ -460,6 +476,13 @@ private final class TouchSurface: UIView {
             switch button { case .a: title = "A"; case .b: title = "B"; case .x: title = "X"; default: title = "Y" }
             label(title, in: frame, size: d * 0.4)
         }
+    }
+}
+extension PlaySessionView {
+    public func controlSettings(scale: Double, opacity: Double, leftHanded: Bool) -> PlaySessionView {
+        var copy = self
+        copy.controlScale = scale; copy.controlOpacity = opacity; copy.leftHanded = leftHanded
+        return copy
     }
 }
 #endif

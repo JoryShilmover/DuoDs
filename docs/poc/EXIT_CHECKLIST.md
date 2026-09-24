@@ -31,7 +31,7 @@ Legend: **[agent]** an agent can do it alone · **[you]** needs you (device, pla
 
 ## 3. UI follow-ups (after the DS Lite–style pass)
 - [ ] **[you]** Hands-on feel in portrait and landscape: size, reach, anything misplaced.
-- [ ] **[agent]** Adjustable control size, position and opacity; left-handed swap.
+- [x] **[agent]** Adjustable control size and opacity; left-handed swap (menu → Controls…). Free-form drag-to-place is not done.
 - [ ] **[agent]** Landscape iPhone layout check on device (unit-tested with an estimated size only).
 - [ ] **[you]** V18 ergonomics: a 15-minute trial per pose. One user minimum, two preferred.
 

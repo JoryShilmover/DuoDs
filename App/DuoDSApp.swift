@@ -13,6 +13,11 @@ struct RootView: View {
     @State private var importing = false
     @State private var swapped = false
     @State private var preference = ScreenLayoutPreference.automatic
+    @State private var showingControls = false
+    // Per-device conveniences (UserDefaults).
+    @AppStorage("controls.scale") private var controlScale = 1.0
+    @AppStorage("controls.opacity") private var controlOpacity = 1.0
+    @AppStorage("controls.leftHanded") private var leftHanded = false
 
     var body: some View {
         NavigationStack {
@@ -35,6 +40,7 @@ struct RootView: View {
                                         inputEpoch: session.inputEpoch,
                                         onStylusSample: { model.recordStylus($0, lowerScreen: $1, uptime: $2) },
                                         onMicrophone: { held in Task { await model.microphone(held: held) } })
+                            .controlSettings(scale: controlScale, opacity: controlOpacity, leftHanded: leftHanded)
                         // Overlay, not a stacked row: pausing must not resize the play area and move the DS screens.
                         .overlay {
                             if session.phase == .paused {
@@ -86,9 +92,30 @@ struct RootView: View {
                             Button("Save manual state") { Task { await model.state(save: true) } }
                             Button("Restore manual state") { Task { await model.state(save: false) } }
                             Button("Toggle emulated DS lid") { session.toggleLid() }
+                            Button("Controls…") { showingControls = true }
                         } label: { Image(systemName: "ellipsis.circle") }
                     }
                 }
+            }
+            .sheet(isPresented: $showingControls) {
+                NavigationStack {
+                    Form {
+                        Section("Size") {
+                            Picker("Size", selection: $controlScale) {
+                                Text("Small").tag(0.75); Text("Medium").tag(0.88); Text("Large").tag(1.0)
+                            }.pickerStyle(.segmented)
+                        }
+                        Section("Opacity") {
+                            Slider(value: $controlOpacity, in: 0.2...1) { Text("Opacity") }
+                        }
+                        Section {
+                            Toggle("Left-handed (D-pad on the right)", isOn: $leftHanded)
+                        }
+                    }
+                    .navigationTitle("Controls")
+                    .toolbar { Button("Done") { showingControls = false } }
+                }
+                .presentationDetents([.medium])
             }
             .overlay { if model.busy { ProgressView().padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12)) } }
             .fileImporter(isPresented: $importing, allowedContentTypes: [UTType(filenameExtension: "nds") ?? .data]) { result in

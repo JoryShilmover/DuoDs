@@ -173,4 +173,23 @@ final class LayoutInputTests: XCTestCase {
         XCTAssertEqual(ControlLayout.dpadButtons(at: CGPoint(x: 90, y: 10), in: pad), [.up, .right])
         XCTAssertEqual(ControlLayout.dpadButtons(at: CGPoint(x: 10, y: 90), in: pad), [.down, .left])
     }
+
+    func testControlSettingsScaleAndLeftHanded() {
+        let left = rect(0, 500, 200, 240), right = rect(230, 500, 200, 240)
+        let standard = ControlLayout(left: left, right: right)
+        let small = ControlLayout(left: left, right: right, scale: 0.75)
+        let swapped = ControlLayout(left: left, right: right, leftHanded: true)
+        func frame(_ layout: ControlLayout, _ element: ControlLayout.Element) -> CGRect {
+            layout.items.first { $0.element == element }!.frame
+        }
+        XCTAssertEqual(frame(small, .dpad).width, frame(standard, .dpad).width * 0.75, accuracy: 0.5)
+        XCTAssertGreaterThan(frame(swapped, .dpad).midX, frame(swapped, .face).midX)       // D-pad on the right
+        XCTAssertLessThan(frame(swapped, .button(.l)).midX, frame(swapped, .button(.r)).midX) // shoulders stay put
+        XCTAssertTrue(right.contains(frame(swapped, .mic)))                                   // pills follow the D-pad
+        for layout in [small, swapped] {
+            for (i, a) in layout.items.enumerated() {
+                for b in layout.items[(i + 1)...] { XCTAssertFalse(a.hitFrame.intersects(b.hitFrame), "\(a.element) vs \(b.element)") }
+            }
+        }
+    }
 }

@@ -30,7 +30,9 @@ public struct ControlLayout: Equatable {
     static let spacing: CGFloat = 8
     static let touchSlop: CGFloat = 10
 
-    public init(left: CGRect, right: CGRect) {
+    /// `scale` (0.6–1) shrinks the D-pad and face diamond within their space; `leftHanded` swaps the
+    /// D-pad and face-button sides (shoulders stay L-left, R-right).
+    public init(left: CGRect, right: CGRect, scale: CGFloat = 1, leftHanded: Bool = false) {
         var items: [Item] = []
         func pad(_ r: CGRect) -> CGRect { r.insetBy(dx: 6, dy: 4) }
         let l = pad(left), r = pad(right)
@@ -54,12 +56,15 @@ public struct ControlLayout: Equatable {
             let top = c.minY + Self.shoulderHeight + Self.spacing
             let bottom = columnPills ? c.maxY : c.maxY - Self.pillHeight - Self.spacing
             let available = columnPills ? c.width - pillWidth - Self.spacing : c.width
-            let side = max(0, min(available, bottom - top, 170))
+            let side = max(0, min(available, bottom - top, 170)) * min(1, max(0.6, scale))
             let x = !columnPills ? c.midX - side / 2
                 : innerOnRight ? c.minX + (available - side) / 2 : c.maxX - available + (available - side) / 2
             return CGRect(x: x, y: top + (bottom - top - side) / 2, width: side, height: side)
         }
-        let dpad = main(l, innerOnRight: true), face = main(r, innerOnRight: false)
+        // The inner side of each cluster faces the screens: right for the left cluster, left for the right one.
+        let (padCluster, faceCluster) = leftHanded ? (r, l) : (l, r)
+        let padInnerRight = !leftHanded, faceInnerRight = leftHanded
+        let dpad = main(padCluster, innerOnRight: padInnerRight), face = main(faceCluster, innerOnRight: faceInnerRight)
         func hit(_ square: CGRect, in cluster: CGRect, innerOnRight: Bool) -> CGRect {
             // Generous slop, clipped to this control's part of the cluster so neighbours never overlap.
             var band = CGRect(x: cluster.minX, y: cluster.minY + Self.shoulderHeight + 1,
@@ -72,8 +77,8 @@ public struct ControlLayout: Equatable {
             }
             return square.insetBy(dx: -Self.touchSlop, dy: -Self.touchSlop).intersection(band)
         }
-        items.append(Item(element: .dpad, title: "", shape: .dpad, frame: dpad, hitFrame: hit(dpad, in: l, innerOnRight: true)))
-        items.append(Item(element: .face, title: "", shape: .diamond, frame: face, hitFrame: hit(face, in: r, innerOnRight: false)))
+        items.append(Item(element: .dpad, title: "", shape: .dpad, frame: dpad, hitFrame: hit(dpad, in: padCluster, innerOnRight: padInnerRight)))
+        items.append(Item(element: .face, title: "", shape: .diamond, frame: face, hitFrame: hit(face, in: faceCluster, innerOnRight: faceInnerRight)))
 
         func pills(_ c: CGRect, _ entries: [(Element, String)], innerOnRight: Bool) {
             for (index, entry) in entries.enumerated() {
@@ -92,8 +97,8 @@ public struct ControlLayout: Equatable {
                 items.append(Item(element: entry.0, title: entry.1, shape: .pill, frame: frame, hitFrame: frame))
             }
         }
-        pills(l, [(.mic, "Mic"), (.lid, "Lid"), (.pause, "Pause")], innerOnRight: true)
-        pills(r, [(.button(.start), "Start"), (.button(.select), "Select")], innerOnRight: false)
+        pills(padCluster, [(.mic, "Mic"), (.lid, "Lid"), (.pause, "Pause")], innerOnRight: padInnerRight)
+        pills(faceCluster, [(.button(.start), "Start"), (.button(.select), "Select")], innerOnRight: faceInnerRight)
 
         self.items = items
         let d = face.width * 0.36
