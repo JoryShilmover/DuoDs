@@ -39,19 +39,24 @@ public struct LayoutSolution: Equatable {
     public let upperScreen: CGRect
     public let lowerScreen: CGRect
     public let effectiveMode: ScreenLayoutMode
+    /// Exactly two thumb clusters when non-empty: [left (D-pad side), right (face-button side)].
     public let controlRegions: [CGRect]
     public let isCompact: Bool
+    /// True only in the last-resort fallback where clusters are overlaid on the screens.
+    public let controlsOverlapScreens: Bool
     public init(upperScreen: CGRect, lowerScreen: CGRect, effectiveMode: ScreenLayoutMode,
-                controlRegions: [CGRect], isCompact: Bool) {
+                controlRegions: [CGRect], isCompact: Bool, controlsOverlapScreens: Bool = false) {
         self.upperScreen = upperScreen
         self.lowerScreen = lowerScreen
         self.effectiveMode = effectiveMode
         self.controlRegions = controlRegions
         self.isCompact = isCompact
+        self.controlsOverlapScreens = controlsOverlapScreens
     }
     public static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.upperScreen.duoEquals(rhs.upperScreen) && lhs.lowerScreen.duoEquals(rhs.lowerScreen)
             && lhs.effectiveMode == rhs.effectiveMode && lhs.isCompact == rhs.isCompact
+            && lhs.controlsOverlapScreens == rhs.controlsOverlapScreens
             && lhs.controlRegions.count == rhs.controlRegions.count
             && zip(lhs.controlRegions, rhs.controlRegions).allSatisfy { $0.duoEquals($1) }
     }
@@ -60,10 +65,21 @@ public struct LayoutSolution: Equatable {
 public enum ScreenLayoutSolver {
     private static let aspect: CGFloat = 4.0 / 3.0
     private static let gutter: CGFloat = 8
-    /// Keeping a control band outranks larger screens, as long as both screens stay legible;
-    /// otherwise controls end up in unusable slivers (seen in Duo portrait and outer display).
-    private static func score(minWidth: CGFloat, reservesControls: Bool) -> CGFloat {
-        minWidth + (reservesControls && minWidth >= 170 ? 10_000 : 0)
+    /// Smallest cluster that fits a shoulder pill, a ~100 pt D-pad/face diamond and a row of small pills.
+    public static let clusterMinimum = CGSize(width: 120, height: 170)
+    private static let clusterMaximum = CGSize(width: 220, height: 250)
+
+    /// DS-style thumb clusters either sit in a band below the screens (D-pad bottom-left, face buttons
+    /// bottom-right) or flank the screens level with the lower screen, like the DS Lite.
+    private enum ControlStyle: Equatable { case none, band(CGFloat), flank(CGFloat) }
+    private static let styles: [ControlStyle] = [.band(200), .band(170), .flank(170), .flank(130), .none]
+
+    private struct Candidate {
+        let first: CGRect
+        let second: CGRect
+        let mode: ScreenLayoutMode
+        let clusters: [CGRect]
+        let score: CGFloat
     }
 
     public static func solve(environment: DisplayEnvironment,
@@ -78,19 +94,13 @@ public enum ScreenLayoutSolver {
         let barriers = environment.reservedRegions.map { $0.frame.standardized.intersection(safe) }
             .filter { !$0.isNull && $0.width > 0 && $0.height > 0 }
         let free = maximalFreeRects(in: safe, avoiding: barriers)
-        // A small gap is kept for controls whenever usable height permits it.
-        let controlHeight: CGFloat = safe.height >= 500 ? 96 : (safe.height >= 320 ? 56 : 0)
         var candidates: [Candidate] = []
         for cell in free {
             for mode in [ScreenLayoutMode.stacked, .sideBySide] {
                 if preference == .stacked && mode != .stacked { continue }
                 if preference == .sideBySide && mode != .sideBySide { continue }
-                if let candidate = fitPair(in: cell, mode: mode, controlHeight: controlHeight) {
-                    candidates.append(candidate)
-                }
-                // Compact fallback keeps both screens visible when a control reserve is impossible.
-                if let candidate = fitPair(in: cell, mode: mode, controlHeight: 0) {
-                    candidates.append(candidate)
+                for style in styles {
+                    if let candidate = fitPair(in: cell, mode: mode, style: style) { candidates.append(candidate) }
                 }
             }
         }
@@ -98,33 +108,39 @@ public enum ScreenLayoutSolver {
         if preference == .automatic {
             for i in free.indices {
                 for j in free.indices where j > i {
-                    if let candidate = fitSplit(free[i], free[j], safe: safe, controlHeight: controlHeight) {
-                        candidates.append(candidate)
+                    for style in styles {
+                        if let candidate = fitSplit(free[i], free[j], safe: safe, style: style) {
+                            candidates.append(candidate)
+                        }
                     }
                 }
             }
         }
         let selected = candidates.max { $0.score < $1.score }
             ?? Candidate(first: CGRect(x: 0, y: 0, width: 0, height: 0),
-                         second: CGRect(x: 0, y: 0, width: 0, height: 0), mode: .stacked, score: 0)
+                         second: CGRect(x: 0, y: 0, width: 0, height: 0), mode: .stacked, clusters: [], score: 0)
         let top = swapScreens ? selected.second : selected.first
         let bottom = swapScreens ? selected.first : selected.second
-        var controls: [CGRect] = []
-        for rect in free {
-            controls.append(contentsOf: subtract(rect, excluding: [selected.first, selected.second]))
+        var clusters = selected.clusters
+        var overlap = false
+        if clusters.isEmpty {
+            // Last resort: keep the game controllable by overlaying clusters on the bottom corners.
+            let size = CGSize(width: min(clusterMinimum.width, safe.width / 2), height: min(clusterMinimum.height, safe.height))
+            clusters = [CGRect(x: safe.minX, y: safe.maxY - size.height, width: size.width, height: size.height),
+                        CGRect(x: safe.maxX - size.width, y: safe.maxY - size.height, width: size.width, height: size.height)]
+            overlap = true
         }
-        controls = controls.filter { $0.width >= 40 && $0.height >= 36 }
-        controls.sort { lhs, rhs in (lhs.width * lhs.height) > (rhs.width * rhs.height) }
         return LayoutSolution(upperScreen: top, lowerScreen: bottom,
-                              effectiveMode: selected.mode, controlRegions: controls,
-                              isCompact: min(top.width, bottom.width) < 170)
+                              effectiveMode: selected.mode, controlRegions: clusters,
+                              isCompact: min(top.width, bottom.width) < 170, controlsOverlapScreens: overlap)
     }
 
-    private struct Candidate {
-        let first: CGRect
-        let second: CGRect
-        let mode: ScreenLayoutMode
-        let score: CGFloat
+    /// Controls outrank larger screens while both screens stay legible (D11); within a tier, the
+    /// larger smallest screen wins, then the roomier control style.
+    private static func score(minWidth: CGFloat, clusters: [CGRect]) -> CGFloat {
+        guard !clusters.isEmpty else { return minWidth }
+        let roomy = clusters.map { min($0.width, $0.height) }.min() ?? 0
+        return minWidth + (minWidth >= 170 ? 10_000 : 0) + roomy / 100
     }
 
     private static func fit(_ area: CGRect) -> CGRect {
@@ -135,46 +151,85 @@ public enum ScreenLayoutSolver {
                       width: width, height: height)
     }
 
-    private static func fitPair(in cell: CGRect, mode: ScreenLayoutMode, controlHeight: CGFloat) -> Candidate? {
-        guard cell.height > controlHeight else { return nil }
-        let usable = CGRect(x: cell.minX, y: cell.minY, width: cell.width, height: cell.height - controlHeight)
+    /// Space left for screens after reserving room for the thumb clusters.
+    private static func usable(_ cell: CGRect, _ style: ControlStyle) -> CGRect? {
+        switch style {
+        case .none: return cell
+        case .band(let height):
+            guard cell.height > height, cell.width >= clusterMinimum.width * 2 + gutter else { return nil }
+            return CGRect(x: cell.minX, y: cell.minY, width: cell.width, height: cell.height - height)
+        case .flank(let width):
+            guard cell.width > width * 2, cell.height >= clusterMinimum.height else { return nil }
+            return CGRect(x: cell.minX + width, y: cell.minY, width: cell.width - width * 2, height: cell.height)
+        }
+    }
+
+    /// Cluster rectangles for a style, anchored to the touch (lower) screen as on the DS Lite.
+    private static func clusters(_ cell: CGRect, _ style: ControlStyle, anchor: CGRect) -> [CGRect] {
+        switch style {
+        case .none: return []
+        case .band(let height):
+            let band = CGRect(x: cell.minX, y: cell.maxY - height, width: cell.width, height: height)
+            let width = min(clusterMaximum.width, (band.width - gutter) / 2)
+            let h = min(clusterMaximum.height, band.height)
+            let y = band.midY - h / 2
+            return [CGRect(x: band.minX, y: y, width: width, height: h),
+                    CGRect(x: band.maxX - width, y: y, width: width, height: h)]
+        case .flank(let width):
+            let h = min(clusterMaximum.height, cell.height)
+            let y = min(max(anchor.midY - h / 2, cell.minY), cell.maxY - h)
+            return [CGRect(x: cell.minX, y: y, width: width, height: h),
+                    CGRect(x: cell.maxX - width, y: y, width: width, height: h)]
+        }
+    }
+
+    private static func fitPair(in cell: CGRect, mode: ScreenLayoutMode, style: ControlStyle) -> Candidate? {
+        guard let area = usable(cell, style) else { return nil }
         let slots: (CGRect, CGRect)
         switch mode {
         case .stacked:
-            guard usable.height > gutter else { return nil }
-            let height = (usable.height - gutter) / 2
-            slots = (CGRect(x: usable.minX, y: usable.minY, width: usable.width, height: height),
-                     CGRect(x: usable.minX, y: usable.minY + height + gutter, width: usable.width, height: height))
+            guard area.height > gutter else { return nil }
+            let height = (area.height - gutter) / 2
+            slots = (CGRect(x: area.minX, y: area.minY, width: area.width, height: height),
+                     CGRect(x: area.minX, y: area.minY + height + gutter, width: area.width, height: height))
         case .sideBySide:
-            guard usable.width > gutter else { return nil }
-            let width = (usable.width - gutter) / 2
-            slots = (CGRect(x: usable.minX, y: usable.minY, width: width, height: usable.height),
-                     CGRect(x: usable.minX + width + gutter, y: usable.minY, width: width, height: usable.height))
+            guard area.width > gutter else { return nil }
+            let width = (area.width - gutter) / 2
+            slots = (CGRect(x: area.minX, y: area.minY, width: width, height: area.height),
+                     CGRect(x: area.minX + width + gutter, y: area.minY, width: width, height: area.height))
         case .split: return nil
         }
-        let first = fit(slots.0), second = fit(slots.1)
+        var first = fit(slots.0), second = fit(slots.1)
         guard first.width > 0, second.width > 0 else { return nil }
-        return Candidate(first: first, second: second, mode: mode,
-                         score: score(minWidth: min(first.width, second.width), reservesControls: controlHeight > 0))
+        if case .band = style {
+            // Sit screens directly above the band so the thumbs stay close to the touch screen.
+            let drop = area.maxY - max(first.maxY, second.maxY)
+            first = first.offsetBy(dx: 0, dy: drop); second = second.offsetBy(dx: 0, dy: drop)
+        }
+        let found = clusters(cell, style, anchor: second)
+        return Candidate(first: first, second: second, mode: mode, clusters: found,
+                         score: score(minWidth: min(first.width, second.width), clusters: found))
     }
 
-    private static func fitSplit(_ a: CGRect, _ b: CGRect, safe: CGRect, controlHeight: CGFloat) -> Candidate? {
+    private static func fitSplit(_ a: CGRect, _ b: CGRect, safe: CGRect, style: ControlStyle) -> Candidate? {
         let horizontal = abs(a.midX - b.midX) > abs(a.midY - b.midY)
         let (firstCell, secondCell) = horizontal
             ? (a.midX < b.midX ? a : b, a.midX < b.midX ? b : a)
             : (a.midY < b.midY ? a : b, a.midY < b.midY ? b : a)
-        // The lower or trailing pane hosts controls where possible.
-        let secondUsable = CGRect(x: secondCell.minX, y: secondCell.minY,
-                                  width: secondCell.width, height: max(0, secondCell.height - controlHeight))
-        let first = fit(firstCell), second = fit(secondUsable)
+        // The lower or trailing pane hosts the touch screen and the controls.
+        guard let secondArea = usable(secondCell, style) else { return nil }
+        let first = fit(firstCell)
+        var second = fit(secondArea)
+        if case .band = style { second = second.offsetBy(dx: 0, dy: secondArea.maxY - second.maxY) }
         guard first.width > 0, second.width > 0, !first.intersects(second) else { return nil }
         let separated = horizontal ? first.maxX <= second.minX : first.maxY <= second.minY
         guard separated else { return nil }
         let minWidth = min(first.width, second.width)
         // A split should win automatically only if each screen remains legible.
         guard minWidth >= min(170, safe.width * 0.38) else { return nil }
-        return Candidate(first: first, second: second, mode: .split,
-                         score: score(minWidth: minWidth, reservesControls: controlHeight > 0) + 1) // split wins ties
+        let found = clusters(secondCell, style, anchor: second)
+        return Candidate(first: first, second: second, mode: .split, clusters: found,
+                         score: score(minWidth: minWidth, clusters: found) + 1) // split wins ties
     }
 
     private static func maximalFreeRects(in safe: CGRect, avoiding barriers: [CGRect]) -> [CGRect] {
@@ -195,20 +250,6 @@ public enum ScreenLayoutSolver {
         }
         return result.filter { rect in
             !result.contains { other in !other.duoEquals(rect) && other.contains(rect) }
-        }
-    }
-
-    private static func subtract(_ rect: CGRect, excluding exclusions: [CGRect]) -> [CGRect] {
-        exclusions.reduce([rect]) { pieces, exclusion in
-            pieces.flatMap { piece -> [CGRect] in
-                let intersection = piece.intersection(exclusion)
-                guard !intersection.isNull, intersection.width > 0, intersection.height > 0 else { return [piece] }
-                return [CGRect(x: piece.minX, y: piece.minY, width: piece.width, height: intersection.minY - piece.minY),
-                        CGRect(x: piece.minX, y: intersection.maxY, width: piece.width, height: piece.maxY - intersection.maxY),
-                        CGRect(x: piece.minX, y: intersection.minY, width: intersection.minX - piece.minX, height: intersection.height),
-                        CGRect(x: intersection.maxX, y: intersection.minY, width: piece.maxX - intersection.maxX, height: intersection.height)]
-                    .filter { $0.width > 0 && $0.height > 0 }
-            }
         }
     }
 }

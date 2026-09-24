@@ -102,20 +102,75 @@ final class LayoutInputTests: XCTestCase {
         XCTAssertEqual(router.snapshot.buttons, 0)
     }
 
-    /// Geometries observed on the iPhone Duo simulator (2026-09-23 fold trial). A layout without a
-    /// usable control band is unplayable, so it must not win just because the screens get larger.
-    func testObservedDuoGeometriesKeepUsableControls() {
-        for (name, size) in [("inner portrait", CGSize(width: 669, height: 805)),
-                             ("outer display", CGSize(width: 382, height: 532)),
-                             ("inner landscape", CGSize(width: 867, height: 523))] {
+    /// Geometries observed on the iPhone Duo simulator and the iPhone 15 Pro Max (2026-09-23), plus an
+    /// estimated iPhone landscape canvas. Every pose must give two DS-style thumb clusters that are
+    /// large enough, inside the safe area, and clear of both screens.
+    func testObservedGeometriesGetDSStyleClusters() {
+        let min = ScreenLayoutSolver.clusterMinimum
+        for (name, size) in [("Duo inner portrait", CGSize(width: 669, height: 805)),
+                             ("Duo outer display", CGSize(width: 382, height: 532)),
+                             ("Duo outer landscape", CGSize(width: 594, height: 320)),
+                             ("Duo inner landscape", CGSize(width: 867, height: 523)),
+                             ("iPhone 15 Pro Max portrait", CGSize(width: 430, height: 747)),
+                             ("iPhone landscape (estimate)", CGSize(width: 814, height: 350))] {
             let safe = rect(0, 0, size.width, size.height)
             let result = ScreenLayoutSolver.solve(environment: DisplayEnvironment(bounds: safe, safeBounds: safe))
-            XCTAssertTrue(result.controlRegions.contains { $0.width >= 7 * 36 && $0.height >= 72 },
-                          "\(name): no control region can host the 7x2 button grid")
+            XCTAssertEqual(result.controlRegions.count, 2, name)
+            XCTAssertFalse(result.controlsOverlapScreens, name)
             XCTAssertFalse(result.isCompact, name)
-            for controls in result.controlRegions {
-                XCTAssertFalse(controls.intersects(result.upperScreen) || controls.intersects(result.lowerScreen), name)
+            let (left, right) = (result.controlRegions[0], result.controlRegions[1])
+            XCTAssertLessThan(left.midX, right.midX, "\(name): D-pad cluster must be on the left")
+            for cluster in result.controlRegions {
+                XCTAssertGreaterThanOrEqual(cluster.width, min.width, name)
+                XCTAssertGreaterThanOrEqual(cluster.height, min.height, name)
+                XCTAssertTrue(safe.contains(cluster), name)
+                XCTAssertFalse(cluster.intersects(result.upperScreen) || cluster.intersects(result.lowerScreen), name)
             }
+            XCTAssertFalse(left.intersects(right), name)
         }
+    }
+
+    func testHalfFoldPutsControlsWithLowerScreenClearOfHinge() {
+        let safe = rect(0, 0, 867, 523)
+        let division = rect(456, -82, 40, 669)
+        let result = ScreenLayoutSolver.solve(environment: DisplayEnvironment(bounds: safe, safeBounds: safe,
+            reservedRegions: [ReservedRegion(frame: division, kind: .division)]))
+        XCTAssertEqual(result.effectiveMode, .split)
+        XCTAssertEqual(result.controlRegions.count, 2)
+        for cluster in result.controlRegions {
+            XCTAssertFalse(cluster.intersects(division))
+            XCTAssertFalse(cluster.intersects(result.lowerScreen) || cluster.intersects(result.upperScreen))
+        }
+    }
+
+    func testControlLayoutPlacesDSLiteElements() {
+        let layout = ControlLayout(left: rect(0, 500, 200, 240), right: rect(230, 500, 200, 240))
+        func frame(_ element: ControlLayout.Element) -> CGRect { layout.items.first { $0.element == element }!.frame }
+        XCTAssertLessThan(frame(.dpad).midX, frame(.face).midX)
+        XCTAssertLessThan(frame(.button(.l)).midY, frame(.dpad).midY)          // shoulder above D-pad
+        XCTAssertLessThan(frame(.button(.r)).midY, frame(.face).midY)
+        XCTAssertGreaterThan(frame(.button(.start)).midY, frame(.face).midY)   // Start/Select under face buttons
+        XCTAssertGreaterThan(frame(.pause).midY, frame(.dpad).midY)
+        XCTAssertGreaterThanOrEqual(frame(.dpad).width, 100)
+        for (i, a) in layout.items.enumerated() {
+            for b in layout.items[(i + 1)...] { XCTAssertFalse(a.hitFrame.intersects(b.hitFrame), "\(a.element) vs \(b.element)") }
+        }
+        let centers = Dictionary(uniqueKeysWithValues: layout.faceCenters.map { ($0.0, $0.1) })
+        XCTAssertLessThan(centers[.x]!.y, centers[.b]!.y)                      // X top, B bottom
+        XCTAssertLessThan(centers[.y]!.x, centers[.a]!.x)                      // Y left, A right
+        XCTAssertEqual(layout.faceButton(at: centers[.a]!), .a)
+        XCTAssertEqual(layout.faceButton(at: CGPoint(x: centers[.a]!.x - 4, y: centers[.a]!.y + 3)), .a)
+        XCTAssertNil(layout.faceButton(at: CGPoint(x: 5, y: 5)))
+    }
+
+    func testDPadEightWayWithDeadZone() {
+        let pad = rect(0, 0, 100, 100)
+        XCTAssertEqual(ControlLayout.dpadButtons(at: CGPoint(x: 50, y: 50), in: pad), [])
+        XCTAssertEqual(ControlLayout.dpadButtons(at: CGPoint(x: 95, y: 50), in: pad), [.right])
+        XCTAssertEqual(ControlLayout.dpadButtons(at: CGPoint(x: 50, y: 5), in: pad), [.up])
+        XCTAssertEqual(ControlLayout.dpadButtons(at: CGPoint(x: 5, y: 50), in: pad), [.left])
+        XCTAssertEqual(ControlLayout.dpadButtons(at: CGPoint(x: 50, y: 95), in: pad), [.down])
+        XCTAssertEqual(ControlLayout.dpadButtons(at: CGPoint(x: 90, y: 10), in: pad), [.up, .right])
+        XCTAssertEqual(ControlLayout.dpadButtons(at: CGPoint(x: 10, y: 90), in: pad), [.down, .left])
     }
 }

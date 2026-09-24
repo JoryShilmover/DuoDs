@@ -49,7 +49,7 @@ Raw evidence is local only, under ignored `artifacts/poc/2026-09-23-resume/`: `l
 | Severity | Item |
 |---|---|
 | S2 | Audio: thin lead (5–7 underruns at each boot or resume, about 25 ms steady), no drift correction, silent stall if the engine stops unobserved. Must be measured on device (V11) |
-| S2 | **UI and on-screen control overhaul needed (user request, 2026-09-23).** The current 7×2 button grid is a placeholder. Future work: redesign the layout and placement of controls per pose (flat, half-fold, outer, portrait), with thumb reach, a D-pad/face-button arrangement like the DS, and user-adjustable placement. Candidate for V18 ergonomics work |
+| S3 | UI/control overhaul: first DS Lite–style pass done (D15). Remaining: user-adjustable placement/size, opacity, left-handed option, V18 hands-on trial |
 | S2 (unverified) | Scene `owner` is never released on scene disconnect, so a new scene may be locked out |
 | S3 | Battery flush is skipped after a runtime core failure (≤10 s of cartridge writes lost) |
 | S3 | Transient geometry with stale reserved regions lasts about 1 frame during transitions |

@@ -198,98 +198,110 @@ private final class DSScreenView: MTKView, MTKViewDelegate {
     }
 }
 
+/// Draws the DS Lite–style controls and routes touches: controls first, then stylus on the lower screen.
 @MainActor
 private final class TouchSurface: UIView {
     var router: InputRouter?
     var onChange: (() -> Void)?
     var onPause: (() -> Void)?
     var onLid: (() -> Void)?
-    private enum Contact { case stylus(UInt64), button(DSButton), pause, lid }
+    private enum Contact { case stylus(UInt64), dpad(Set<DSButton>), face(DSButton?), button(DSButton), pause, lid }
     private var contacts: [ObjectIdentifier: Contact] = [:]
     private var nextID: UInt64 = 1
     private var lowerScreen = CGRect(x: 0, y: 0, width: 0, height: 0)
-    private var targets: [(CGRect, Contact)] = []
-    private var labels: [UILabel] = []
+    private var layout: ControlLayout?
+    private let haptics = UIImpactFeedbackGenerator(style: .light)
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         isMultipleTouchEnabled = true
+        isOpaque = false
         backgroundColor = .clear
+        contentMode = .redraw
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
 
     func configure(solution: LayoutSolution) {
         lowerScreen = solution.lowerScreen
-        labels.forEach { $0.removeFromSuperview() }
-        labels.removeAll()
-        targets.removeAll()
-        let names: [(String, Contact)] = [
-            ("↑", .button(.up)), ("←", .button(.left)), ("↓", .button(.down)), ("→", .button(.right)),
-            ("X", .button(.x)), ("Y", .button(.y)), ("A", .button(.a)), ("B", .button(.b)),
-            ("L", .button(.l)), ("R", .button(.r)), ("Sel", .button(.select)), ("Start", .button(.start)),
-            ("Ⅱ", .pause), ("Lid", .lid)
-        ]
-        // Prefer the lowest usable band (thumb reach); e.g. outer landscape has equal bands above and below.
-        guard let area = solution.controlRegions.filter({ $0.width >= 150 && $0.height >= 48 }).max(by: { $0.maxY < $1.maxY })
-            ?? solution.controlRegions.first else { return }
-        let columns = 7, rows = 2
-        let width = min(area.width / CGFloat(columns), 52)
-        let height = min(area.height / CGFloat(rows), 48)
-        let x0 = area.midX - width * CGFloat(columns) / 2
-        let y0 = area.midY - height * CGFloat(rows) / 2
-        for (index, pair) in names.enumerated() {
-            let rect = CGRect(x: x0 + CGFloat(index % columns) * width,
-                              y: y0 + CGFloat(index / columns) * height,
-                              width: width - 2, height: height - 2)
-            guard rect.width > 0, rect.height > 0 else { continue }
-            targets.append((rect, pair.1))
-            let label = UILabel(frame: rect)
-            label.text = pair.0
-            label.textAlignment = .center
-            label.textColor = .white
-            label.font = .boldSystemFont(ofSize: min(14, rect.height * 0.4))
-            label.backgroundColor = UIColor.darkGray.withAlphaComponent(0.9)
-            label.layer.cornerRadius = min(12, rect.height / 2)
-            label.clipsToBounds = true
-            label.isUserInteractionEnabled = false
-            addSubview(label)
-            labels.append(label)
-        }
+        layout = solution.controlRegions.count == 2
+            ? ControlLayout(left: solution.controlRegions[0], right: solution.controlRegions[1]) : nil
+        setNeedsDisplay()
     }
 
     func cancelContacts() {
-        for (id, contact) in contacts {
-            switch contact {
-            case .stylus(let stylus): router?.endStylus(id: stylus)
-            case .button(let button): router?.release(button, source: "touch.\(id)")
-            case .pause, .lid: break
-            }
-        }
+        for (key, contact) in contacts { release(contact, key: key) }
         contacts.removeAll()
+        setNeedsDisplay()
         onChange?()
+    }
+
+    private func source(_ key: ObjectIdentifier) -> String { "touch.\(key.hashValue)" }
+
+    private func release(_ contact: Contact, key: ObjectIdentifier) {
+        switch contact {
+        case .stylus(let id): router?.endStylus(id: id)
+        case .dpad, .face, .button: router?.setButtons([], source: source(key))
+        case .pause, .lid: break
+        }
+    }
+
+    private func buttons(of contact: Contact) -> Set<DSButton> {
+        switch contact {
+        case .dpad(let set): return set
+        case .face(let button): return button.map { [$0] } ?? []
+        case .button(let button): return [button]
+        default: return []
+        }
+    }
+
+    /// Applies a contact's new state, with a haptic tick when it presses something new.
+    private func apply(_ contact: Contact, key: ObjectIdentifier) {
+        let before = contacts[key].map(buttons(of:)) ?? []
+        contacts[key] = contact
+        let now = buttons(of: contact)
+        if case .stylus = contact {} else if case .pause = contact {} else if case .lid = contact {} else {
+            router?.setButtons(now, source: source(key))
+        }
+        if !now.subtracting(before).isEmpty { haptics.impactOccurred() }
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         for touch in touches {
             let key = ObjectIdentifier(touch)
             let point = touch.location(in: self)
-            if let target = targets.first(where: { $0.0.contains(point) })?.1 {
-                contacts[key] = target
-                if case .button(let button) = target { router?.press(button, source: "touch.\(key)") }
+            if let layout, let item = layout.item(at: point) {
+                switch item.element {
+                case .dpad: apply(.dpad(ControlLayout.dpadButtons(at: point, in: item.frame)), key: key)
+                case .face: apply(.face(layout.faceButton(at: point)), key: key)
+                case .button(let button): apply(.button(button), key: key)
+                case .pause: contacts[key] = .pause; haptics.impactOccurred()
+                case .lid: contacts[key] = .lid; haptics.impactOccurred()
+                }
             } else if router?.beginStylus(id: nextID, at: point, lowerScreen: lowerScreen) == true {
                 contacts[key] = .stylus(nextID)
                 nextID &+= 1
             }
         }
+        setNeedsDisplay()
         onChange?()
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         for touch in touches {
-            if case .stylus(let id) = contacts[ObjectIdentifier(touch)] {
-                router?.moveStylus(id: id, to: touch.location(in: self))
+            let key = ObjectIdentifier(touch)
+            let point = touch.location(in: self)
+            switch contacts[key] {
+            case .stylus(let id): router?.moveStylus(id: id, to: point)
+            case .dpad:
+                // Keep tracking outside the pad so a sliding thumb never drops the direction.
+                if let frame = layout?.items.first(where: { $0.element == .dpad })?.frame {
+                    apply(.dpad(ControlLayout.dpadButtons(at: point, in: frame)), key: key)
+                }
+            case .face: apply(.face(layout?.faceButton(at: point)), key: key)
+            default: break
             }
         }
+        setNeedsDisplay()
         onChange?()
     }
 
@@ -300,14 +312,110 @@ private final class TouchSurface: UIView {
         for touch in touches {
             let key = ObjectIdentifier(touch)
             guard let contact = contacts.removeValue(forKey: key) else { continue }
-            switch contact {
-            case .stylus(let id): router?.endStylus(id: id)
-            case .button(let button): router?.release(button, source: "touch.\(key)")
-            case .pause: if !cancelled { onPause?() }
-            case .lid: if !cancelled { onLid?() }
+            release(contact, key: key)
+            if case .pause = contact, !cancelled { onPause?() }
+            if case .lid = contact, !cancelled { onLid?() }
+        }
+        setNeedsDisplay()
+        onChange?()
+    }
+
+    // MARK: Drawing
+
+    private static let fill = UIColor(white: 1, alpha: 0.14)
+    private static let pressedFill = UIColor(white: 1, alpha: 0.45)
+    private static let stroke = UIColor(white: 1, alpha: 0.35)
+    private static let text = UIColor(white: 1, alpha: 0.85)
+
+    override func draw(_ rect: CGRect) {
+        guard let layout else { return }
+        let held = contacts.values.reduce(into: Set<DSButton>()) { $0.formUnion(buttons(of: $1)) }
+        let heldPause = contacts.values.contains { if case .pause = $0 { return true }; return false }
+        let heldLid = contacts.values.contains { if case .lid = $0 { return true }; return false }
+        for item in layout.items {
+            switch item.element {
+            case .dpad: drawDPad(item.frame, held: held)
+            case .face: drawFace(layout, held: held)
+            case .button(let button): drawPill(item.frame, title: item.title, pressed: held.contains(button))
+            case .pause: drawPill(item.frame, title: item.title, pressed: heldPause)
+            case .lid: drawPill(item.frame, title: item.title, pressed: heldLid)
             }
         }
-        onChange?()
+    }
+
+    private func paint(_ path: UIBezierPath, pressed: Bool) {
+        (pressed ? Self.pressedFill : Self.fill).setFill()
+        path.fill()
+        Self.stroke.setStroke()
+        path.lineWidth = 1
+        path.stroke()
+    }
+
+    private func label(_ title: String, in frame: CGRect, size: CGFloat) {
+        let attributes: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: size, weight: .semibold),
+                                                         .foregroundColor: Self.text]
+        let text = title as NSString
+        let bounds = text.size(withAttributes: attributes)
+        text.draw(at: CGPoint(x: frame.midX - bounds.width / 2, y: frame.midY - bounds.height / 2), withAttributes: attributes)
+    }
+
+    private func drawPill(_ frame: CGRect, title: String, pressed: Bool) {
+        paint(UIBezierPath(roundedRect: frame, cornerRadius: frame.height / 2), pressed: pressed)
+        label(title, in: frame, size: min(14, frame.height * 0.45))
+    }
+
+    private func drawDPad(_ frame: CGRect, held: Set<DSButton>) {
+        let arm = frame.width * 0.34
+        let horizontal = CGRect(x: frame.minX, y: frame.midY - arm / 2, width: frame.width, height: arm)
+        let vertical = CGRect(x: frame.midX - arm / 2, y: frame.minY, width: arm, height: frame.height)
+        // One plus-shaped outline so the arms don't show overlapping edges in the middle.
+        let cross = UIBezierPath()
+        for point in [CGPoint(x: vertical.minX, y: frame.minY), CGPoint(x: vertical.maxX, y: frame.minY),
+                      CGPoint(x: vertical.maxX, y: horizontal.minY), CGPoint(x: frame.maxX, y: horizontal.minY),
+                      CGPoint(x: frame.maxX, y: horizontal.maxY), CGPoint(x: vertical.maxX, y: horizontal.maxY),
+                      CGPoint(x: vertical.maxX, y: frame.maxY), CGPoint(x: vertical.minX, y: frame.maxY),
+                      CGPoint(x: vertical.minX, y: horizontal.maxY), CGPoint(x: frame.minX, y: horizontal.maxY),
+                      CGPoint(x: frame.minX, y: horizontal.minY), CGPoint(x: vertical.minX, y: horizontal.minY)] {
+            if cross.isEmpty { cross.move(to: point) } else { cross.addLine(to: point) }
+        }
+        cross.close()
+        cross.lineJoinStyle = .round
+        paint(cross, pressed: false)
+        let half = (frame.width - arm) / 2
+        let arms: [(DSButton, CGRect)] = [
+            (.up, CGRect(x: vertical.minX, y: frame.minY, width: arm, height: half)),
+            (.down, CGRect(x: vertical.minX, y: frame.maxY - half, width: arm, height: half)),
+            (.left, CGRect(x: frame.minX, y: horizontal.minY, width: half, height: arm)),
+            (.right, CGRect(x: frame.maxX - half, y: horizontal.minY, width: half, height: arm))]
+        for (button, rect) in arms {
+            if held.contains(button) {
+                Self.pressedFill.setFill()
+                UIBezierPath(rect: rect).fill()
+            }
+            // Small direction marks, like the lines on the DS Lite's pad.
+            let mark = UIBezierPath()
+            let c = CGPoint(x: rect.midX, y: rect.midY), m = arm * 0.16
+            switch button {
+            case .up: mark.move(to: CGPoint(x: c.x, y: c.y - m)); mark.addLine(to: CGPoint(x: c.x, y: c.y + m))
+            case .down: mark.move(to: CGPoint(x: c.x, y: c.y - m)); mark.addLine(to: CGPoint(x: c.x, y: c.y + m))
+            default: mark.move(to: CGPoint(x: c.x - m, y: c.y)); mark.addLine(to: CGPoint(x: c.x + m, y: c.y))
+            }
+            Self.text.setStroke()
+            mark.lineWidth = 2
+            mark.lineCapStyle = .round
+            mark.stroke()
+        }
+    }
+
+    private func drawFace(_ layout: ControlLayout, held: Set<DSButton>) {
+        let d = layout.faceButtonDiameter
+        for (button, center) in layout.faceCenters {
+            let frame = CGRect(x: center.x - d / 2, y: center.y - d / 2, width: d, height: d)
+            paint(UIBezierPath(ovalIn: frame), pressed: held.contains(button))
+            let title: String
+            switch button { case .a: title = "A"; case .b: title = "B"; case .x: title = "X"; default: title = "Y" }
+            label(title, in: frame, size: d * 0.4)
+        }
     }
 }
 #endif
