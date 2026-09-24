@@ -153,6 +153,7 @@ final class LayoutInputTests: XCTestCase {
         XCTAssertLessThan(frame(.button(.r)).midY, frame(.face).midY)
         XCTAssertGreaterThan(frame(.button(.start)).midY, frame(.face).midY)   // Start/Select under face buttons
         XCTAssertGreaterThan(frame(.pause).midY, frame(.dpad).midY)
+        XCTAssertTrue(layout.items.contains { $0.element == .fastForward })
         XCTAssertGreaterThanOrEqual(frame(.dpad).width, 100)
         for (i, a) in layout.items.enumerated() {
             for b in layout.items[(i + 1)...] { XCTAssertFalse(a.hitFrame.intersects(b.hitFrame), "\(a.element) vs \(b.element)") }

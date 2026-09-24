@@ -41,9 +41,9 @@ final class PersistenceStoreTests: XCTestCase {
         XCTAssertThrowsError(try store.loadState(gameID: gameID, coreVersion: "core-commit-2")) { error in
             XCTAssertEqual(error as? PersistenceError, .incompatibleState)
         }
-        let stateURL = root.appendingPathComponent("Games/\(gameID)/States/manual.state")
+        let stateURL = root.appendingPathComponent("Games/\(gameID)/States/slot-1.state")
         let otherID = String(repeating: "b", count: 64)
-        let otherState = root.appendingPathComponent("Games/\(otherID)/States/manual.state")
+        let otherState = root.appendingPathComponent("Games/\(otherID)/States/slot-1.state")
         try FileManager.default.createDirectory(at: otherState.deletingLastPathComponent(), withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: stateURL, to: otherState)
         XCTAssertThrowsError(try store.loadState(gameID: otherID, coreVersion: "core-commit-1")) { error in
@@ -88,5 +88,59 @@ final class PersistenceStoreTests: XCTestCase {
         let store = PersistenceStore(root: root)
         XCTAssertThrowsError(try store.writeBattery(Data("secret".utf8), gameID: gameID))
         XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: outside.path).isEmpty)
+    }
+
+    func testSlotsAreIndependentWithThumbnailsAndDelete() throws {
+        let store = PersistenceStore(root: root)
+        XCTAssertNil(store.stateInfo(gameID: gameID, slot: .manual(2)))
+        try store.saveState(Data("two".utf8), gameID: gameID, coreVersion: "v1", slot: .manual(2), thumbnail: Data("png".utf8))
+        try store.saveState(Data("auto".utf8), gameID: gameID, coreVersion: "v1", slot: .auto)
+        XCTAssertEqual(try store.loadState(gameID: gameID, coreVersion: "v1", slot: .manual(2)), Data("two".utf8))
+        XCTAssertEqual(try store.loadState(gameID: gameID, coreVersion: "v1", slot: .auto), Data("auto".utf8))
+        XCTAssertThrowsError(try store.loadState(gameID: gameID, coreVersion: "v1", slot: .manual(1))) { error in
+            XCTAssertEqual(error as? PersistenceError, .missingState)
+        }
+        XCTAssertEqual(store.stateInfo(gameID: gameID, slot: .manual(2))?.thumbnail, Data("png".utf8))
+        XCTAssertNil(store.stateInfo(gameID: gameID, slot: .auto)?.thumbnail)
+        try store.deleteState(gameID: gameID, slot: .auto)
+        XCTAssertNil(store.stateInfo(gameID: gameID, slot: .auto))
+        XCTAssertNotNil(store.stateInfo(gameID: gameID, slot: .manual(2)))
+    }
+
+    func testLegacySingleStateLoadsAsSlotOne() throws {
+        let store = PersistenceStore(root: root)
+        try store.saveState(Data("legacy".utf8), gameID: gameID, coreVersion: "v1")
+        let states = root.appendingPathComponent("Games/\(gameID)/States")
+        try FileManager.default.moveItem(at: states.appendingPathComponent("slot-1.state"), to: states.appendingPathComponent("manual.state"))
+        XCTAssertEqual(try store.loadState(gameID: gameID, coreVersion: "v1", slot: .manual(1)), Data("legacy".utf8))
+        XCTAssertNotNil(store.stateInfo(gameID: gameID, slot: .manual(1)))
+        try store.saveState(Data("new".utf8), gameID: gameID, coreVersion: "v1", slot: .manual(1))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: states.appendingPathComponent("manual.state").path))
+        XCTAssertEqual(try store.loadState(gameID: gameID, coreVersion: "v1"), Data("new".utf8))
+    }
+
+    func testSaveImportFitting() {
+        let save = Data((0..<512).map { UInt8($0 % 251) })
+        XCTAssertEqual(SaveImport.fit(save, expectedSize: 512), save)
+        var dsv = save
+        dsv.append(Data(repeating: 0x20, count: 122 - 16))
+        dsv.append(Data("|-DESMUME SAVE-|".utf8))
+        XCTAssertEqual(SaveImport.fit(dsv, expectedSize: 512), save)
+        XCTAssertEqual(SaveImport.fit(save + Data(repeating: 0xFF, count: 512), expectedSize: 512), save)
+        XCTAssertNil(SaveImport.fit(save + Data([1]) + Data(repeating: 0xFF, count: 511), expectedSize: 512))
+        XCTAssertNil(SaveImport.fit(save.prefix(256), expectedSize: 512))
+        XCTAssertNil(SaveImport.fit(save, expectedSize: 0))
+    }
+
+    func testStagedImportIsTakenOnceAndLeavesSaveAlone() throws {
+        let store = PersistenceStore(root: root)
+        try store.writeBattery(Data("current".utf8), gameID: gameID)
+        XCTAssertNil(try store.takeStagedBattery(gameID: gameID))
+        try store.stageImportedBattery(Data("imported".utf8), gameID: gameID)
+        XCTAssertTrue(store.hasStagedBattery(gameID: gameID))
+        XCTAssertEqual(try store.readBattery(gameID: gameID), Data("current".utf8))
+        XCTAssertEqual(try store.takeStagedBattery(gameID: gameID), Data("imported".utf8))
+        XCTAssertFalse(store.hasStagedBattery(gameID: gameID))
+        XCTAssertNil(try store.takeStagedBattery(gameID: gameID))
     }
 }

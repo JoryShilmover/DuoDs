@@ -5,10 +5,10 @@ import CoreGraphics
 
 /// DS Lite–style on-screen controls placed inside the two thumb clusters chosen by ScreenLayoutSolver.
 /// Left cluster: L shoulder (top, outer edge), D-pad, Mic/Lid/Pause pills.
-/// Right cluster: R shoulder (top, outer edge), X/Y/A/B diamond, Start/Select pills.
+/// Right cluster: R shoulder (top, outer edge), X/Y/A/B diamond, Start/Select/fast-forward pills.
 /// Pills go in an inner column when the cluster is wide, otherwise in a row underneath.
 public struct ControlLayout: Equatable {
-    public enum Element: Equatable { case button(DSButton), dpad, face, pause, lid, mic }
+    public enum Element: Equatable { case button(DSButton), dpad, face, pause, lid, mic, fastForward }
     public enum Shape: Equatable { case pill, dpad, diamond }
     public struct Item: Equatable {
         public let element: Element
@@ -100,7 +100,7 @@ public struct ControlLayout: Equatable {
             }
         }
         pills(padCluster, [(.mic, "Mic"), (.lid, "Lid"), (.pause, "Pause")], innerOnRight: padInnerRight)
-        pills(faceCluster, [(.button(.start), "Start"), (.button(.select), "Select")], innerOnRight: faceInnerRight)
+        pills(faceCluster, [(.button(.start), "Start"), (.button(.select), "Select"), (.fastForward, "▶▶")], innerOnRight: faceInnerRight)
 
         self.items = items
         let d = face.width * 0.36

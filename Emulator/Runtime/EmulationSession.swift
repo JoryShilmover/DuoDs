@@ -62,13 +62,16 @@ public enum RuntimeError: LocalizedError {
         }
     }
 
-    public func boot(romURL: URL, saveDirectory: URL, systemDirectory: URL) async throws {
+    /// `options` override core options for this boot (e.g. threaded renderer, DS profile); `username` is the DS nickname.
+    public func boot(romURL: URL, saveDirectory: URL, systemDirectory: URL,
+                     options: [String: String] = [:], username: String? = nil) async throws {
         guard phase == .idle else { throw RuntimeError.unavailable("An emulation session is already active") }
         phase = .loading
         errorMessage = nil
         do {
             try await worker.perform {
-                try self.worker.boot(rom: romURL.path, save: saveDirectory.path, system: systemDirectory.path)
+                try self.worker.boot(rom: romURL.path, save: saveDirectory.path, system: systemDirectory.path,
+                                     options: options, username: username)
             }
             phase = .paused // Caller may restore cartridge RAM before the first tick.
         } catch {
@@ -139,6 +142,23 @@ public enum RuntimeError: LocalizedError {
         inputEpoch &+= 1
     }
 
+    /// Emulation speed multiplier (1 = normal). Above 1, only one frame's audio in N is played.
+    public func setSpeed(_ multiplier: Int) {
+        let worker = worker, value = max(1, min(8, multiplier))
+        worker.queue.async { worker.speed = value }
+    }
+
+    /// Output volume, 0–1 (0 mutes).
+    public func setVolume(_ volume: Float) {
+        let worker = worker
+        worker.queue.async { worker.volume = max(0, min(1, volume)) }
+    }
+
+    /// Cartridge save size the loaded game expects (0 when none is loaded or the type is not known yet).
+    public func saveSize() async -> Int {
+        (try? await worker.perform { self.worker.core.map { duo_save_size($0) } ?? 0 }) ?? 0
+    }
+
     public func toggleLid() {
         let worker = worker
         worker.queue.async {
@@ -172,6 +192,14 @@ private final class RuntimeWorker: @unchecked Sendable {
     var fail: ((String) -> Void)?
     var touchConsumed: ((Double) -> Void)?
     var pendingTouch: Double = 0
+    var speed = 1
+    var volume: Float = 1 {
+        didSet {
+            #if canImport(AVFoundation)
+            audio?.volume = volume
+            #endif
+        }
+    }
     private var generation: UInt64 = 0
     private var running = false
     private var deadline: UInt64 = 0
@@ -198,12 +226,15 @@ private final class RuntimeWorker: @unchecked Sendable {
         }
     }
 
-    func boot(rom: String, save: String, system: String) throws {
+    func boot(rom: String, save: String, system: String, options: [String: String], username: String?) throws {
         guard core == nil else { throw RuntimeError.unavailable("Emulator already loaded") }
         guard let instance = duo_create(system, save) else {
             throw RuntimeError.core("Could not create the emulator core")
         }
         core = instance
+        for (key, value) in options { _ = duo_set_option(instance, key, value) }
+        if let username, !username.isEmpty { duo_set_username(instance, username) }
+        speed = 1
         guard duo_load(instance, rom) else {
             let text = String(cString: duo_error(instance))
             duo_destroy(instance)
@@ -218,7 +249,7 @@ private final class RuntimeWorker: @unchecked Sendable {
         }
         period = UInt64((1_000_000_000.0 / currentStats.fps).rounded())
         #if canImport(AVFoundation)
-        do { audio = try AudioTransport(core: instance, sampleRate: currentStats.sample_rate) }
+        do { audio = try AudioTransport(core: instance, sampleRate: currentStats.sample_rate); audio?.volume = volume }
         catch { stop(); throw error }
         #endif
     }
@@ -319,11 +350,18 @@ private final class RuntimeWorker: @unchecked Sendable {
         let buttons = micHeld ? input.buttons | UInt16(1 << 14) : input.buttons // L3 = core mic button
         let native = DuoInput(buttons: buttons, touch_x: input.touchX,
                               touch_y: input.touchY, touching: input.touching)
-        if !duo_run(core, native) {
-            let message = String(cString: duo_error(core))
-            pause()
-            fail?(message)
-            return
+        // Fast-forward: run `speed` frames in this period and keep only the last one's audio, so the
+        // audio queue still receives one frame's worth per period and the pacing above stays valid.
+        let runs = max(1, speed)
+        for index in 0..<runs {
+            if runs > 1 { duo_set_audio_muted(core, index != runs - 1) }
+            if !duo_run(core, native) {
+                duo_set_audio_muted(core, false)
+                let message = String(cString: duo_error(core))
+                pause()
+                fail?(message)
+                return
+            }
         }
         if pendingTouch > 0, input.touching {
             touchConsumed?(ProcessInfo.processInfo.systemUptime - pendingTouch)

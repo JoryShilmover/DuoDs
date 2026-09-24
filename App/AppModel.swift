@@ -23,6 +23,15 @@ import UniformTypeIdentifiers
     }
     @Published var busy = false
     @Published var owner: UUID?
+    /// Cartridge icons and titles by game ID (absent when a ROM has no readable banner).
+    @Published var banners: [String: NDSBanner] = [:]
+    /// Games with an automatic state from when they were last left.
+    @Published var resumable: Set<String> = []
+    /// `.nds` files the user put in the app's Files folder (Files → On My iPhone → Duo DS), not yet imported.
+    @Published var inbox: [URL] = []
+    @Published var fastForward = false
+    /// Bumped when saved states change, so open state lists refresh.
+    @Published var statesRevision = 0
     private var foreground = false
     private var interruption: NSObjectProtocol?
     private var routeChange: NSObjectProtocol?
@@ -31,6 +40,7 @@ import UniformTypeIdentifiers
     private var eventURL: URL
 
     private init() {
+        AppSettings.register()
         root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("DuoDS")
         library = LibraryStore(root: root)
         persistence = PersistenceStore(root: root)
@@ -81,7 +91,20 @@ import UniformTypeIdentifiers
         else { await diagnosticIfRequested() } // auto-launch only once foreground, so boot is not born paused
         // Require explicit Resume after interruption; never silently capture input.
     }
-    func reload() { do { games = try library.list() } catch { message = "Library: \(error.localizedDescription)" } }
+    func reload() {
+        do { games = try library.list() } catch { message = "Library: \(error.localizedDescription)" }
+        var found: [String: NDSBanner] = [:]
+        for game in games where banners[game.id] == nil { found[game.id] = library.banner(for: game) }
+        banners.merge(found) { old, _ in old }
+        resumable = Set(games.filter { persistence.stateInfo(gameID: $0.id, slot: .auto) != nil }.map(\.id))
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        inbox = ((try? FileManager.default.contentsOfDirectory(at: documents, includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.pathExtension.lowercased() == "nds" }
+            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+    }
+    func displayTitle(_ game: GameRecord) -> String {
+        banners[game.id].map(\.title).flatMap { $0.isEmpty ? nil : $0 } ?? game.title
+    }
     func importROM(_ url: URL) async {
         guard !busy else { record("import-skipped", detail: "busy"); return }
         busy = true; defer { busy = false }
@@ -91,12 +114,24 @@ import UniformTypeIdentifiers
             reload()
         } catch { message = "Import failed: \(error.localizedDescription)" }
     }
+    /// Imports a file from the app's Files folder, then removes it there: the library keeps a verified copy.
+    func importFromInbox(_ url: URL) async {
+        guard !busy else { return }
+        busy = true
+        let store = library
+        do {
+            _ = try await Task.detached { try store.importROM(from: url) }.value
+            try? FileManager.default.removeItem(at: url)
+        } catch { message = "Import failed: \(error.localizedDescription)" }
+        busy = false
+        reload()
+    }
     func launch(_ game: GameRecord) async {
         guard !busy else { record("launch-skipped", detail: "busy"); return }
         busy = true; defer { busy = false }
         do {
             if current?.id == game.id, session.phase == .paused {
-                if foreground { try await session.resume() }; return
+                if foreground { try await resumeSession() }; return
             }
             if current != nil {
                 await session.pause()
@@ -104,28 +139,75 @@ import UniformTypeIdentifiers
                 await session.stop()
             } else if session.phase == .failed { await session.stop() }
             current = game
+            fastForward = false
             PresentationStats.shared.reset()
             let directory = library.gameDirectory(for: game)
-            try await session.boot(romURL: library.romURL(for: game), saveDirectory: directory.appendingPathComponent("CoreSaves"), systemDirectory: directory.appendingPathComponent("System"))
+            let nickname = AppSettings.nickname()
+            try await session.boot(romURL: library.romURL(for: game), saveDirectory: directory.appendingPathComponent("CoreSaves"),
+                                   systemDirectory: directory.appendingPathComponent("System"),
+                                   options: AppSettings.coreOptions(), username: nickname.isEmpty ? nil : nickname)
+            applyAudioSettings()
             if let battery = try persistence.readBattery(gameID: game.id) { try await session.restoreBattery(battery) }
-            if foreground { try await session.resume() }
+            var notice: String?
+            if let imported = try? persistence.takeStagedBattery(gameID: game.id) {
+                notice = try await applyImportedSave(imported, game: game)
+            } else if AppSettings.autoResumeEnabled, persistence.stateInfo(gameID: game.id, slot: .auto) != nil {
+                do {
+                    try await session.loadState(persistence.loadState(gameID: game.id, coreVersion: Self.coreVersion, slot: .auto))
+                    record("auto-state-load")
+                } catch {
+                    // Nothing has run yet, so the cartridge save restored above is intact.
+                    try? persistence.deleteState(gameID: game.id, slot: .auto)
+                    notice = "Couldn't resume where you left off, so the game started from its last in-game save."
+                    record("auto-state-failed", detail: error.localizedDescription)
+                }
+            }
+            if foreground { try await resumeSession() }
             record("boot")
+            if let notice { message = notice }
         } catch {
             message = "Launch failed: \(error.localizedDescription)"
             await session.stop() // Do not save an uninitialized cartridge over existing progress.
             current = nil
         }
     }
+    /// Starts from the cartridge save, discarding the automatic state.
+    func launchFresh(_ game: GameRecord) async {
+        try? persistence.deleteState(gameID: game.id, slot: .auto)
+        resumable.remove(game.id)
+        await launch(game)
+    }
     func pauseAndSave(reason: String) async {
         session.releaseInputs()
         await session.pause()
         await persistBattery()
+        // Leaving the app: keep an automatic state so the game reopens exactly here if iOS ends the app.
+        if ["scene-inactive", "scene-disconnected", "scene-handoff"].contains(reason) { await saveAutoState() }
         record(reason)
     }
     func resume() async {
         guard foreground, !busy else { return }
-        do { try await session.resume(); record("resume") }
+        do { try await resumeSession(); record("resume") }
         catch { message = error.localizedDescription }
+    }
+    /// An automatic state is valid only until emulation runs again: it holds the cartridge save as of
+    /// when it was written, so resuming from it after later play would roll that save back. Drop it first.
+    private func resumeSession() async throws {
+        if let game = current, resumable.contains(game.id) || persistence.stateInfo(gameID: game.id, slot: .auto) != nil {
+            try? persistence.deleteState(gameID: game.id, slot: .auto)
+            resumable.remove(game.id)
+        }
+        try await session.resume()
+    }
+    private func saveAutoState() async {
+        guard AppSettings.autoResumeEnabled, let game = current, session.phase == .paused else { return }
+        do {
+            let data = try await session.saveState()
+            try persistence.saveState(data, gameID: game.id, coreVersion: Self.coreVersion, slot: .auto,
+                                      thumbnail: session.frame.flatMap(Self.thumbnail))
+            resumable.insert(game.id)
+            record("auto-state-save")
+        } catch { record("auto-state-save-failed", detail: error.localizedDescription) }
     }
     private func flushBattery() async throws {
         guard let game = current, session.phase != .idle, session.phase != .loading else { return }
@@ -144,7 +226,8 @@ import UniformTypeIdentifiers
         await session.pause()
         do {
             try await flushBattery()
-            await session.stop(); current = nil; record("stop")
+            if session.phase == .paused { await saveAutoState() }
+            await session.stop(); current = nil; fastForward = false; record("stop")
         } catch { message = "Could not save. Session kept paused: \(error.localizedDescription)" }
     }
     func delete(_ game: GameRecord) {
@@ -152,21 +235,161 @@ import UniformTypeIdentifiers
         do { try library.delete(game); reload() }
         catch { message = error.localizedDescription }
     }
-    func state(save: Bool) async {
-        guard let game = current, !busy else { return }
+    /// Saves the running game into a manual slot. Returns false (with a message) on failure.
+    @discardableResult
+    func saveState(slot: Int) async -> Bool {
+        guard let game = current, !busy else { return false }
+        busy = true; defer { busy = false; statesRevision += 1 }
+        let wasRunning = session.phase == .running
+        await session.pause()
+        do {
+            let data = try await session.saveState()
+            try persistence.saveState(data, gameID: game.id, coreVersion: Self.coreVersion, slot: .manual(slot),
+                                      thumbnail: session.frame.flatMap(Self.thumbnail))
+            record("state-save", detail: "slot=\(slot)")
+            if wasRunning, foreground { try await session.resume() }
+            return true
+        } catch { message = error.localizedDescription; return false }
+    }
+    /// Restores a manual slot and leaves the game paused so the player can take their hands back first.
+    @discardableResult
+    func loadState(slot: Int) async -> Bool {
+        guard let game = current, !busy else { return false }
         busy = true; defer { busy = false }
         await session.pause()
         do {
-            if save {
-                let data = try await session.saveState()
-                try persistence.saveState(data, gameID: game.id, coreVersion: Self.coreVersion)
-            } else {
-                let data = try persistence.loadState(gameID: game.id, coreVersion: Self.coreVersion)
-                try await session.loadState(data)
+            let data = try persistence.loadState(gameID: game.id, coreVersion: Self.coreVersion, slot: .manual(slot))
+            try await session.loadState(data)
+            record("state-load", detail: "slot=\(slot)")
+            return true
+        } catch PersistenceError.incompatibleState {
+            message = "This state was made by a different version of Duo DS and can't be loaded."; return false
+        } catch { message = error.localizedDescription; return false }
+    }
+    func deleteState(slot: Int) {
+        guard let game = current else { return }
+        try? persistence.deleteState(gameID: game.id, slot: .manual(slot))
+        statesRevision += 1
+    }
+    func stateInfo(slot: Int) -> StateInfo? {
+        current.flatMap { persistence.stateInfo(gameID: $0.id, slot: .manual(slot)) }
+    }
+
+    func toggleFastForward() {
+        fastForward.toggle()
+        let speed = fastForward ? max(2, UserDefaults.standard.integer(forKey: AppSettings.fastForwardSpeed)) : 1
+        session.setSpeed(speed)
+        record("fast-forward", detail: "speed=\(speed)")
+    }
+    func applyAudioSettings() {
+        let defaults = UserDefaults.standard
+        session.setVolume(defaults.bool(forKey: AppSettings.muted) ? 0 : Float(defaults.double(forKey: AppSettings.volume)))
+    }
+
+    // MARK: Save export, import and backup
+
+    /// Writes the game's cartridge save as a raw `.sav` in a temporary folder, for the user to move anywhere.
+    func exportSave(_ game: GameRecord) async -> URL? {
+        if current?.id == game.id { await persistBattery() }
+        do {
+            guard let data = try persistence.readBattery(gameID: game.id) else {
+                message = "\(displayTitle(game)) has no in-game save yet."; return nil
             }
-            message = save ? "Manual state saved. Persistent cartridge saves remain separate." : "Manual state restored. Tap Resume to continue."
-            record(save ? "state-save" : "state-load")
-        } catch { message = error.localizedDescription }
+            let url = try Self.exportFolder().appendingPathComponent(SaveBackup.folderName(for: GameRecord(id: game.id, title: displayTitle(game))) + ".sav")
+            try data.write(to: url, options: .atomic)
+            record("save-export")
+            return url
+        } catch { message = "Export failed: \(error.localizedDescription)"; return nil }
+    }
+    /// Stages a `.sav` (or DeSmuME `.dsv`) for the game; it is checked and applied when the game next starts.
+    func importSave(from url: URL, for game: GameRecord) async {
+        guard current?.id != game.id else { message = "Return to the Library before importing a save for this game."; return }
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let size = (try url.resourceValues(forKeys: [.fileSizeKey])).fileSize ?? 0
+            guard size > 0, size <= PersistenceStore.maximumBatterySize else { message = "That file is too large to be a DS save."; return }
+            try persistence.stageImportedBattery(try Data(contentsOf: url), gameID: game.id)
+            // The automatic state carries the old save and would override the import on launch.
+            try? persistence.deleteState(gameID: game.id, slot: .auto)
+            reload()
+            record("save-import-staged")
+            message = "Save imported. It will load the next time you start \(displayTitle(game)); your current save is kept as a backup."
+        } catch { message = "Import failed: \(error.localizedDescription)" }
+    }
+    /// Called at boot with a staged import, after the existing save was restored. Returns a notice for the user.
+    private func applyImportedSave(_ imported: Data, game: GameRecord) async throws -> String {
+        let expected = await session.saveSize()
+        guard let fitted = SaveImport.fit(imported, expectedSize: expected) else {
+            record("save-import-rejected", detail: "expected=\(expected) got=\(imported.count)")
+            return expected == 0
+                ? "This game doesn't have a save file yet, so the imported save couldn't be checked. Save once in the game, then import again."
+                : "The imported save doesn't match this game (it expects \(expected / 1024) KB; the file is \(imported.count / 1024) KB). Your existing save was kept."
+        }
+        try await session.restoreBattery(fitted)
+        try persistence.writeBattery(fitted, gameID: game.id) // the replaced save becomes battery.previous
+        try? persistence.deleteState(gameID: game.id, slot: .auto)
+        record("save-import-applied")
+        return "Imported save loaded."
+    }
+    /// Writes a ZIP of every game's save and manual states (no games) to a temporary folder.
+    func exportBackup() async -> URL? {
+        guard !busy else { return nil }
+        if current != nil { await persistBattery() }
+        busy = true; defer { busy = false }
+        let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd HHmm"
+        do {
+            let url = try Self.exportFolder().appendingPathComponent("Duo DS saves \(formatter.string(from: Date())).zip")
+            let named = games.map { GameRecord(id: $0.id, title: displayTitle($0), importedAt: $0.importedAt) }
+            let persistence = persistence, version = Self.coreVersion
+            let summary = try await Task.detached { try SaveBackup.export(games: named, persistence: persistence, coreVersion: version, to: url) }.value
+            record("backup-export", detail: "saves=\(summary.saves) states=\(summary.states)")
+            if summary.saves == 0 && summary.states == 0 { message = "There are no saves to back up yet."; return nil }
+            return url
+        } catch { message = "Backup failed: \(error.localizedDescription)"; return nil }
+    }
+    func restoreBackup(from url: URL) async {
+        guard current == nil else { message = "Return to the Library before restoring a backup."; return }
+        guard !busy else { return }
+        busy = true; defer { busy = false; reload() }
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let summary = try SaveBackup.restore(from: url, games: games, persistence: persistence, coreVersion: Self.coreVersion) { game in
+                try? self.persistence.deleteState(gameID: game.id, slot: .auto)
+            }
+            record("backup-restore", detail: "saves=\(summary.saves) states=\(summary.states) missing=\(summary.missingGames.count)")
+            var lines = ["Restored \(summary.saves) save\(summary.saves == 1 ? "" : "s") and \(summary.states) state\(summary.states == 1 ? "" : "s")."]
+            if summary.saves > 0 { lines.append("Each replaced save is kept as a backup copy.") }
+            if !summary.missingGames.isEmpty {
+                lines.append("Not in your library (import the game, then restore again): \(summary.missingGames.joined(separator: ", ")).")
+            }
+            if summary.incompatibleStates > 0 {
+                lines.append("\(summary.incompatibleStates) state\(summary.incompatibleStates == 1 ? " was" : "s were") made by a different version of Duo DS and skipped.")
+            }
+            message = lines.joined(separator: " ")
+        } catch BackupError.notABackup {
+            message = "That file isn't a Duo DS backup."
+        } catch BackupError.unsupportedArchive {
+            message = "That ZIP was changed by another app (it's compressed), so it can't be restored. Use the original backup file."
+        } catch { message = "Restore failed: \(error.localizedDescription)" }
+    }
+    private static func exportFolder() throws -> URL {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Export-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder
+    }
+    /// Half-size PNG of both DS screens for state lists.
+    static func thumbnail(_ frame: DSFrame) -> Data? {
+        guard frame.pixels.count == 256 * 384 * 4, let provider = CGDataProvider(data: frame.pixels as CFData),
+              let image = CGImage(width: 256, height: 384, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: 1024,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue).union(.byteOrder32Little),
+                                  provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent) else { return nil }
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        return UIGraphicsImageRenderer(size: CGSize(width: 128, height: 192), format: format).pngData { _ in
+            UIImage(cgImage: image).draw(in: CGRect(x: 0, y: 0, width: 128, height: 192))
+        }
     }
     /// `--selftest` (with `--diagnostic`): scripted P5 checks through the same session APIs the UI uses.
     /// Results are `selftest-*` events in session-events.jsonl; see docs/poc/WORK_LOG.md for interpretation.
@@ -212,18 +435,15 @@ import UniformTypeIdentifiers
         await wait(4)
         let savedFrame = session.frame?.pixels
         message = nil
-        await state(save: true)
-        let saveOutcome = message ?? ""
-        message = nil
-        guard saveOutcome.hasPrefix("Manual state saved") else {
-            record("states-unavailable", detail: saveOutcome)
+        guard await saveState(slot: 1) else {
+            record("states-unavailable", detail: message ?? "")
+            message = nil
             await resume(); return
         }
         record("states-saved")
         await resume(); await wait(3)
         let advancedFrame = session.frame?.pixels
-        await state(save: false)
-        let loadOutcome = message ?? ""
+        let loadOutcome = await loadState(slot: 1) ? "restored" : (message ?? "failed")
         message = nil
         await resume(); await wait(0.25)
         let restoredFrame = session.frame?.pixels
@@ -237,6 +457,30 @@ import UniformTypeIdentifiers
         await wait(2); record("mic-selftest-before")
         await microphone(held: true); await wait(2); record("mic-selftest-held")
         await microphone(held: false); await wait(1); record("mic-selftest-released")
+    }
+    /// `--selftest-features`: fast-forward frame rate, the automatic state across close/relaunch, and a backup.
+    func runFeatureSelfTest() async {
+        func wait(_ seconds: Double) async { try? await Task.sleep(nanoseconds: UInt64(seconds * 1e9)) }
+        guard let game = current else { record("features-abort", detail: "no game"); return }
+        await wait(2)
+        var start = session.stats.frames; let underrunsBefore = session.stats.audio_underruns
+        await wait(3); let normal = session.stats.frames - start
+        toggleFastForward(); start = session.stats.frames
+        await wait(3); let fast = session.stats.frames - start
+        toggleFastForward()
+        record("ff-selftest", detail: String(format: "normal_fps=%.1f ff_fps=%.1f ratio=%.2f underruns=%llu",
+                                             Double(normal) / 3, Double(fast) / 3, Double(fast) / Double(max(normal, 1)),
+                                             session.stats.audio_underruns - underrunsBefore))
+        await close()
+        record("auto-selftest-closed", detail: "resumable=\(resumable.contains(game.id))")
+        await launch(game); await wait(1)
+        record("auto-selftest-relaunched", detail: "auto_left=\(persistence.stateInfo(gameID: game.id, slot: .auto) != nil) phase=\(session.phase.rawValue)")
+        message = nil
+        if let url = await exportBackup() {
+            let entries = ((try? ZipReader.read(url: url)) ?? [:]).keys.sorted()
+            record("backup-selftest", detail: "entries=\(entries.joined(separator: ","))")
+        } else { record("backup-selftest", detail: "none: \(message ?? "")"); message = nil }
+        record("features-done", detail: "banner_title=\(banners[game.id]?.title ?? "none")")
     }
     func diagnosticIfRequested() async {
         guard !automaticLaunchDone else { return }; automaticLaunchDone = true
@@ -257,6 +501,7 @@ import UniformTypeIdentifiers
             if arguments.contains("--selftest") { await runSelfTest() }
             if arguments.contains("--selftest-states") { await runStateSelfTest() }
             if arguments.contains("--selftest-mic") { await runMicSelfTest() }
+            if arguments.contains("--selftest-features") { await runFeatureSelfTest() }
         }
     }
     /// V15: hold-to-talk. Permission is requested on first use (never at launch); if denied the game

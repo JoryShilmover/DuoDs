@@ -13,6 +13,7 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <new>
 #include <string>
 #include <vector>
@@ -69,7 +70,9 @@ std::atomic<DuoCore*> g_active{nullptr};
 }
 
 struct DuoCore {
-    std::string system_path, save_path, rom_path, error;
+    std::string system_path, save_path, rom_path, error, username;
+    std::map<std::string, std::string> option_overrides;
+    bool audio_muted = false;
     // Core sets need_fullpath=false: host supplies bytes. The core copies them (retro/info.cpp), so this
     // buffer is freed right after retro_load_game to avoid holding an extra full ROM in memory.
     std::vector<uint8_t> rom_data;
@@ -157,6 +160,9 @@ bool environment_cb(unsigned command, void* data) {
             if (!data) return false;
             auto* variable = static_cast<retro_variable*>(data);
             if (!variable->key) return false;
+            if (auto found = c->option_overrides.find(variable->key); found != c->option_overrides.end()) {
+                variable->value = found->second.c_str(); return true;
+            }
             for (const auto& option : kOptions) {
                 if (std::strcmp(variable->key, option[0]) == 0) {
                     variable->value = option[1]; return true;
@@ -174,6 +180,9 @@ bool environment_cb(unsigned command, void* data) {
             mic->set_mic_state = mic_set_state; mic->get_mic_state = mic_get_state; mic->read_mic = mic_read;
             return true;
         }
+        case RETRO_ENVIRONMENT_GET_USERNAME:
+            if (!data || c->username.empty()) return false;
+            *static_cast<const char**>(data) = c->username.c_str(); return true;
         case RETRO_ENVIRONMENT_GET_INPUT_BITMASKS:
             return true;
         case RETRO_ENVIRONMENT_GET_LOG_INTERFACE:
@@ -218,11 +227,12 @@ void video_cb(const void* data, unsigned width, unsigned height, size_t pitch) {
 
 void audio_sample_cb(int16_t left, int16_t right) {
     const int16_t sample[2] = {left, right};
-    if (DuoCore* c = current()) c->audio.push(sample, 1);
+    if (DuoCore* c = current(); c && !c->audio_muted) c->audio.push(sample, 1);
 }
 
 size_t audio_batch_cb(const int16_t* data, size_t frames) {
     DuoCore* c = current();
+    if (c && c->audio_muted) return frames; // discarded on purpose; not an overrun
     return c && data ? c->audio.push(data, frames) : 0;
 }
 
@@ -273,6 +283,16 @@ DuoCore* duo_create(const char* system_path, const char* save_path) {
     c->initialized = true;
     return c;
 }
+
+bool duo_set_option(DuoCore* c, const char* key, const char* value) {
+    if (!c || c != current() || c->loaded || !key || !value) return false;
+    c->option_overrides[key] = value;
+    return true;
+}
+void duo_set_username(DuoCore* c, const char* name) {
+    if (c && c == current() && !c->loaded) c->username = name ? name : "";
+}
+void duo_set_audio_muted(DuoCore* c, bool muted) { if (c && c == current()) c->audio_muted = muted; }
 
 bool duo_load(DuoCore* c, const char* rom_path) {
     if (!c || c != current() || !c->initialized || c->loaded || !rom_path) return false;

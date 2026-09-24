@@ -30,6 +30,13 @@ public final class PlaySessionCanvas: UIView {
     public var onInput: ((DSInput) -> Void)?
     public var onPause: (() -> Void)?
     public var onLidToggle: (() -> Void)?
+    /// The ▶▶ pill was tapped.
+    public var onFastForward: (() -> Void)? {
+        didSet { inputSurface.onFastForward = onFastForward }
+    }
+    /// Draws the ▶▶ pill latched while fast-forward is on.
+    public var fastForwardActive = false { didSet { if fastForwardActive != oldValue { inputSurface.fastForwardActive = fastForwardActive } } }
+    public var hapticsEnabled = true { didSet { inputSurface.hapticsEnabled = hapticsEnabled } }
     /// Diagnostics only: reports each new geometry solution (e.g. fold/unfold, resize).
     public var onGeometry: ((DisplayEnvironment, LayoutSolution) -> Void)?
     /// V10 evidence: a stylus contact began at `point` (view space) over `lowerScreen`; `uptime` is the touch timestamp.
@@ -152,6 +159,9 @@ public struct PlaySessionView: UIViewRepresentable {
     public var onGeometry: (DisplayEnvironment, LayoutSolution) -> Void
     public var onStylusSample: (CGPoint, CGRect, TimeInterval) -> Void
     public var onMicrophone: (Bool) -> Void
+    public var onFastForward: () -> Void = {}
+    public var fastForwardActive = false
+    public var hapticsEnabled = true
     public var controlScale: CGFloat = 1
     public var controlOpacity: CGFloat = 1
     public var leftHanded = false
@@ -187,6 +197,9 @@ public struct PlaySessionView: UIViewRepresentable {
         view.inputEpoch = inputEpoch
         view.onStylusSample = onStylusSample
         view.onMicrophone = onMicrophone
+        view.onFastForward = onFastForward
+        view.fastForwardActive = fastForwardActive
+        view.hapticsEnabled = hapticsEnabled
         view.controlScale = controlScale
         view.controlOpacity = controlOpacity
         view.leftHanded = leftHanded
@@ -261,12 +274,16 @@ private final class TouchSurface: UIView {
     var onLid: (() -> Void)?
     var onStylusSample: ((CGPoint, CGRect, TimeInterval) -> Void)?
     var onMicrophone: ((Bool) -> Void)?
-    private enum Contact { case stylus(UInt64), dpad(Set<DSButton>), face(DSButton?), button(DSButton), pause, lid, mic }
+    var onFastForward: (() -> Void)?
+    var fastForwardActive = false { didSet { setNeedsDisplay() } }
+    var hapticsEnabled = true
+    private enum Contact { case stylus(UInt64), dpad(Set<DSButton>), face(DSButton?), button(DSButton), pause, lid, mic, fastForward }
     private var contacts: [ObjectIdentifier: Contact] = [:]
     private var nextID: UInt64 = 1
     private var lowerScreen = CGRect(x: 0, y: 0, width: 0, height: 0)
     private var layout: ControlLayout?
-    private let haptics = UIImpactFeedbackGenerator(style: .light)
+    private let feedback = UIImpactFeedbackGenerator(style: .light)
+    private func tick() { if hapticsEnabled { feedback.impactOccurred() } }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -299,7 +316,7 @@ private final class TouchSurface: UIView {
         case .stylus(let id): router?.endStylus(id: id)
         case .dpad, .face, .button: router?.setButtons([], source: source(key))
         case .mic: onMicrophone?(false)
-        case .pause, .lid: break
+        case .pause, .lid, .fastForward: break
         }
     }
 
@@ -317,10 +334,11 @@ private final class TouchSurface: UIView {
         let before = contacts[key].map(buttons(of:)) ?? []
         contacts[key] = contact
         let now = buttons(of: contact)
-        if case .stylus = contact {} else if case .pause = contact {} else if case .lid = contact {} else if case .mic = contact {} else {
-            router?.setButtons(now, source: source(key))
+        switch contact {
+        case .dpad, .face, .button: router?.setButtons(now, source: source(key))
+        default: break
         }
-        if !now.subtracting(before).isEmpty { haptics.impactOccurred() }
+        if !now.subtracting(before).isEmpty { tick() }
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -332,9 +350,10 @@ private final class TouchSurface: UIView {
                 case .dpad: apply(.dpad(ControlLayout.dpadButtons(at: point, in: item.frame)), key: key)
                 case .face: apply(.face(layout.faceButton(at: point)), key: key)
                 case .button(let button): apply(.button(button), key: key)
-                case .pause: contacts[key] = .pause; haptics.impactOccurred()
-                case .lid: contacts[key] = .lid; haptics.impactOccurred()
-                case .mic: contacts[key] = .mic; haptics.impactOccurred(); onMicrophone?(true)
+                case .pause: contacts[key] = .pause; tick()
+                case .lid: contacts[key] = .lid; tick()
+                case .mic: contacts[key] = .mic; tick(); onMicrophone?(true)
+                case .fastForward: contacts[key] = .fastForward; tick()
                 }
             } else if router?.beginStylus(id: nextID, at: point, lowerScreen: lowerScreen) == true {
                 contacts[key] = .stylus(nextID)
@@ -375,6 +394,7 @@ private final class TouchSurface: UIView {
             release(contact, key: key)
             if case .pause = contact, !cancelled { onPause?() }
             if case .lid = contact, !cancelled { onLid?() }
+            if case .fastForward = contact, !cancelled { onFastForward?() }
         }
         setNeedsDisplay()
         onChange?()
@@ -393,6 +413,7 @@ private final class TouchSurface: UIView {
         let heldPause = contacts.values.contains { if case .pause = $0 { return true }; return false }
         let heldLid = contacts.values.contains { if case .lid = $0 { return true }; return false }
         let heldMic = contacts.values.contains { if case .mic = $0 { return true }; return false }
+        let heldFastForward = contacts.values.contains { if case .fastForward = $0 { return true }; return false }
         for item in layout.items {
             switch item.element {
             case .dpad: drawDPad(item.frame, held: held)
@@ -401,6 +422,7 @@ private final class TouchSurface: UIView {
             case .pause: drawPill(item.frame, title: item.title, pressed: heldPause)
             case .lid: drawPill(item.frame, title: item.title, pressed: heldLid)
             case .mic: drawPill(item.frame, title: item.title, pressed: heldMic)
+            case .fastForward: drawPill(item.frame, title: item.title, pressed: heldFastForward || fastForwardActive)
             }
         }
     }
@@ -481,9 +503,15 @@ private final class TouchSurface: UIView {
     }
 }
 extension PlaySessionView {
-    public func controlSettings(scale: Double, opacity: Double, leftHanded: Bool) -> PlaySessionView {
+    public func controlSettings(scale: Double, opacity: Double, leftHanded: Bool, haptics: Bool = true) -> PlaySessionView {
         var copy = self
-        copy.controlScale = scale; copy.controlOpacity = opacity; copy.leftHanded = leftHanded
+        copy.controlScale = scale; copy.controlOpacity = opacity; copy.leftHanded = leftHanded; copy.hapticsEnabled = haptics
+        return copy
+    }
+
+    public func fastForward(active: Bool, onToggle: @escaping () -> Void) -> PlaySessionView {
+        var copy = self
+        copy.fastForwardActive = active; copy.onFastForward = onToggle
         return copy
     }
 }

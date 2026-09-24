@@ -69,7 +69,14 @@ P0–P4 as above. Run ended (usage limit) ~17:42 local while root was rebuilding
 - Bug (user report): the ⋯ menu opened but none of its items responded. `RootView` observed `EmulationSession`, whose `frame`/`stats` publish every frame, so the toolbar Menu was rebuilt at 60 Hz while open. Moved the play area into `PlayArea` (the only observer); the root holds the session unobserved. Swap screens did register once early in the run, so the failure was intermittent. Release build installed; user confirmed the menu works and manual save/restore state works on the device (V20).
 - `collect-evidence.py` fixes: sessions end at `stop` (idle time was merged into the previous session), final counters come from the last event before `stop` (reports showed 0 frames), and the device model uses devicectl's `Marketing Name` key.
 
+### 2026-09-24 — Release roadmap Tier 1 (built, awaiting device test)
+- All seven Tier 1 items built (EXIT_CHECKLIST "Release roadmap"; design in D21). New: `App/AppSettings.swift`, `App/SettingsView.swift`, `App/StatesView.swift`, `Features/Library/NDSBanner.swift`, `Emulator/Persistence/SaveBackup.swift`; bridge adds `duo_set_option`, `duo_set_username`, `duo_set_audio_muted`.
+- Tests: 31 logic tests pass (new: banner parsing, ZIP round trip checked with system `unzip`, backup/restore incl. missing games and other core versions, slots, legacy `manual.state`, save fitting, staged import); native bridge test with ASan/UBSan covers option overrides, username and muted audio.
+- Simulator (iPhone Duo, `--diagnostic --selftest-states --selftest-features`): slot-1 round trip restored (diff 4.40 vs 27.10); fast-forward 2.01× (60.0 → 120.3 fps) with 0 underruns; automatic state saved on close, loaded on relaunch, gone after resume; backup ZIP holds both games' entries; `user-01`'s banner gives its title, publisher and icon (`artifacts/poc/2026-09-24-tier1/library.png`, local). The diagnostic fixture has no banner (fallback icon).
+- Release build installed on the iPhone 15 Pro Max. Not yet exercised on a device: anything below.
+
 ## Next session (pick up here)
+0. Device batch test of Tier 1 (user): library icons; Settings (volume/mute, haptics, nickname/language take effect on next start); ▶▶ fast-forward and 3D speed with threaded rendering on; Save States… slots; leave the app mid-game, force-quit, reopen → resumes; touch-and-hold → Export Save / Import Save; Back Up All Saves → Restore from Backup; copy a `.nds` into Files → On My iPhone → Duo DS → Add. Then collect evidence.
 1. On the device: Controls…, hold Mic (allow, then revoke in Settings — V15), a landscape stretch, and taps near the lower-screen corners (V10).
 2. Then run `scripts/collect-evidence.py --device 00008130-000835282204001C --operator <user>` and update REPORT.md (V10, V15, V20) and EXIT_CHECKLIST.md.
 3. Free-team provisioning expires about 7 days after install; rebuild and reinstall with the device-build command above if launching fails.

@@ -46,6 +46,13 @@ bool retro_load_game(const retro_game_info* info) {
     variable = {"melonds_jit_enable", nullptr};
     assert(env(RETRO_ENVIRONMENT_GET_VARIABLE, &variable));
     assert(std::strcmp(variable.value, "disabled") == 0);
+    // Host overrides win over the built-in table; the nickname answers the username request.
+    variable = {"melonds_threaded_renderer", nullptr};
+    assert(env(RETRO_ENVIRONMENT_GET_VARIABLE, &variable) && std::strcmp(variable.value, "enabled") == 0);
+    variable = {"melonds_firmware_language", nullptr};
+    assert(env(RETRO_ENVIRONMENT_GET_VARIABLE, &variable) && std::strcmp(variable.value, "fr") == 0);
+    const char* username = nullptr;
+    assert(env(RETRO_ENVIRONMENT_GET_USERNAME, &username) && std::strcmp(username, "Jory") == 0);
     retro_pixel_format format = RETRO_PIXEL_FORMAT_XRGB8888;
     assert(env(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &format));
     return true;
@@ -109,6 +116,9 @@ int main() {
     DuoCore* core = duo_create("/system", "/save");
     assert(core && !duo_create("/system", "/save"));
     assert(!duo_load(core, "/nonexistent/rom.nds"));
+    assert(duo_set_option(core, "melonds_threaded_renderer", "enabled"));
+    assert(duo_set_option(core, "melonds_firmware_language", "fr"));
+    duo_set_username(core, "Jory");
     char rom[] = "/tmp/duo-core-test-XXXXXX";
     const int fd = mkstemp(rom);
     assert(fd >= 0 && write(fd, "NDS!", 4) == 4 && close(fd) == 0);
@@ -157,7 +167,7 @@ int main() {
     assert(std::abs(last_pointer_y) < 100); // y=192 is the lower screen's first row.
     size_t frame_size = 0; uint64_t frame_id = 0;
     const uint8_t* frame = duo_frame(core, &frame_size, &frame_id);
-    assert(frame && frame_size == 256 * 384 * 4 && frame_id == 5); // 3 input runs + 2 lid-queue runs
+    assert(frame && frame_size == 256 * 384 * 4 && frame_id == 5); // 3 input runs + 2 lid-queue runs (checked before the muted run below)
     assert(frame[0] == 0x33 && frame[1] == 0x22 && frame[2] == 0x11 && frame[3] == 0xff);
     assert(frame[frame_size - 1] == 0xff);
     float native_audio[8]{};
@@ -166,6 +176,15 @@ int main() {
     assert(queued > 0 && queued < 1966);
     assert(duo_read_audio(core, native_audio, 4) == 0 && native_audio[0] == 0.0f);
     assert(duo_audio_buffered(core) == queued);
+    // Fast-forward drops muted frames' audio without counting overruns.
+    duo_stats(core, &stats);
+    const uint64_t overruns = stats.audio_overruns;
+    duo_set_audio_muted(core, true);
+    assert(duo_run(core, controls) && duo_audio_buffered(core) == queued);
+    duo_set_audio_muted(core, false);
+    duo_stats(core, &stats);
+    assert(stats.audio_overruns == overruns);
+    assert(!duo_set_option(core, "melonds_threaded_renderer", "disabled")); // only before load
     assert(duo_save_size(core) == 4);
     uint8_t copied[4]{};
     assert(!duo_copy_save(core, copied, 3));

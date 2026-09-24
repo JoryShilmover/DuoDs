@@ -12,7 +12,48 @@ public enum PersistenceError: Error, Equatable {
     case missingState
 }
 
-/// Stores cartridge data and one manual state per content hash.
+/// A save-state slot. `auto` is written when a game is left and consumed when it resumes.
+public enum StateSlot: Hashable, Sendable {
+    case auto
+    case manual(Int)
+    public static let manualCount = 5
+    public static var manualSlots: [StateSlot] { (1...manualCount).map { .manual($0) } }
+    var stem: String {
+        switch self {
+        case .auto: return "auto"
+        case .manual(let n): return "slot-\(n)"
+        }
+    }
+}
+
+public struct StateInfo: Equatable, Sendable {
+    public let date: Date
+    public let thumbnail: Data?
+}
+
+/// Fits a cartridge save from another emulator or an export to the size this game's core expects.
+public enum SaveImport {
+    private static let desmumeFooterLength = 122
+    private static let desmumeMarker = Data("|-DESMUME SAVE-|".utf8)
+
+    /// Strips a DeSmuME `.dsv` footer and blank padding; nil if the data cannot be this game's save.
+    public static func fit(_ data: Data, expectedSize: Int) -> Data? {
+        guard expectedSize > 0 else { return nil }
+        var payload = data
+        if payload.count > desmumeFooterLength, payload.suffix(desmumeMarker.count) == desmumeMarker {
+            payload = payload.prefix(payload.count - desmumeFooterLength)
+        }
+        if payload.count == expectedSize { return Data(payload) }
+        // Some tools pad saves to a larger chip size; accept only if the extra bytes are blank.
+        if payload.count > expectedSize {
+            let tail = payload.suffix(from: payload.startIndex + expectedSize)
+            if tail.allSatisfy({ $0 == 0xFF }) || tail.allSatisfy({ $0 == 0x00 }) { return Data(payload.prefix(expectedSize)) }
+        }
+        return nil
+    }
+}
+
+/// Stores cartridge data and save-state slots per content hash.
 /// The active core must be paused while these synchronous methods run.
 public final class PersistenceStore {
     public static let maximumBatterySize = 64 * 1024 * 1024
@@ -77,26 +118,93 @@ public final class PersistenceStore {
         return nil
     }
 
-    public func saveState(_ data: Data, gameID: String, coreVersion: String) throws {
+    /// Holds an imported cartridge save until the game next boots, when its expected size is known
+    /// (see SaveImport.fit). The current save is untouched until then.
+    public func stageImportedBattery(_ data: Data, gameID: String) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        guard data.count <= Self.maximumBatterySize else { throw PersistenceError.dataTooLarge }
+        let directory = try gameDirectory(gameID)
+        try verifyDirectoryIsNotLink(directory)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let encoded = try Self.encode(data, kind: .battery, gameID: gameID, coreVersion: nil)
+        try encoded.write(to: directory.appendingPathComponent("battery.import"), options: .atomic)
+    }
+
+    /// Returns and removes a staged import. A damaged staging file is removed and reported as corrupt.
+    public func takeStagedBattery(gameID: String) throws -> Data? {
+        lock.lock()
+        defer { lock.unlock() }
+        let file = try gameDirectory(gameID).appendingPathComponent("battery.import")
+        guard fileManager.fileExists(atPath: file.path) else { return nil }
+        defer { try? fileManager.removeItem(at: file) }
+        return try Self.readEnvelope(at: file, kind: .battery, gameID: gameID, coreVersion: nil, maximumSize: Self.maximumBatterySize)
+    }
+
+    public func hasStagedBattery(gameID: String) -> Bool {
+        guard let directory = try? gameDirectory(gameID) else { return false }
+        return fileManager.fileExists(atPath: directory.appendingPathComponent("battery.import").path)
+    }
+
+    public func saveState(_ data: Data, gameID: String, coreVersion: String,
+                          slot: StateSlot = .manual(1), thumbnail: Data? = nil) throws {
         lock.lock()
         defer { lock.unlock() }
         guard data.count <= Self.maximumStateSize else { throw PersistenceError.dataTooLarge }
         try Self.validateCoreVersion(coreVersion)
-        let directory = try gameDirectory(gameID).appendingPathComponent("States", isDirectory: true)
+        let directory = try statesDirectory(gameID)
         try verifyDirectoryIsNotLink(directory)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         let encoded = try Self.encode(data, kind: .state, gameID: gameID, coreVersion: coreVersion)
         try beforeReplacement?()
-        try encoded.write(to: directory.appendingPathComponent("manual.state"), options: .atomic)
+        try encoded.write(to: directory.appendingPathComponent(slot.stem + ".state"), options: .atomic)
+        let thumb = directory.appendingPathComponent(slot.stem + ".thumb")
+        if let thumbnail, thumbnail.count <= Self.maximumThumbnailSize { try? thumbnail.write(to: thumb, options: .atomic) }
+        else { try? fileManager.removeItem(at: thumb) }
+        // The pre-slot single state file was slot 1; drop it once slot 1 has a newer state.
+        if slot == .manual(1) { try? fileManager.removeItem(at: directory.appendingPathComponent(Self.legacyStateName)) }
     }
 
-    public func loadState(gameID: String, coreVersion: String) throws -> Data {
+    public func loadState(gameID: String, coreVersion: String, slot: StateSlot = .manual(1)) throws -> Data {
         lock.lock()
         defer { lock.unlock() }
         try Self.validateCoreVersion(coreVersion)
-        let file = try gameDirectory(gameID).appendingPathComponent("States/manual.state")
-        guard fileManager.fileExists(atPath: file.path) else { throw PersistenceError.missingState }
+        guard let file = try stateFile(gameID, slot) else { throw PersistenceError.missingState }
         return try Self.readEnvelope(at: file, kind: .state, gameID: gameID, coreVersion: coreVersion, maximumSize: Self.maximumStateSize)
+    }
+
+    public func deleteState(gameID: String, slot: StateSlot) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        let directory = try statesDirectory(gameID)
+        for name in [slot.stem + ".state", slot.stem + ".thumb"] + (slot == .manual(1) ? [Self.legacyStateName] : []) {
+            try? fileManager.removeItem(at: directory.appendingPathComponent(name))
+        }
+    }
+
+    /// Date and thumbnail of a stored state, or nil when the slot is empty. Does not validate the payload.
+    public func stateInfo(gameID: String, slot: StateSlot) -> StateInfo? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let file = try? stateFile(gameID, slot),
+              let date = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        else { return nil }
+        let thumb = file.deletingLastPathComponent().appendingPathComponent(slot.stem + ".thumb")
+        let size = (try? thumb.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+        return StateInfo(date: date, thumbnail: size <= Self.maximumThumbnailSize ? try? Data(contentsOf: thumb) : nil)
+    }
+
+    private static let legacyStateName = "manual.state"
+    public static let maximumThumbnailSize = 1024 * 1024
+
+    private func statesDirectory(_ gameID: String) throws -> URL {
+        try gameDirectory(gameID).appendingPathComponent("States", isDirectory: true)
+    }
+
+    private func stateFile(_ gameID: String, _ slot: StateSlot) throws -> URL? {
+        let directory = try statesDirectory(gameID)
+        let candidates = [slot.stem + ".state"] + (slot == .manual(1) ? [Self.legacyStateName] : [])
+        return candidates.map { directory.appendingPathComponent($0) }.first { fileManager.fileExists(atPath: $0.path) }
     }
 
     private func gameDirectory(_ id: String) throws -> URL {

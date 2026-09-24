@@ -16,7 +16,13 @@ typedef struct { double fps, sample_rate; uint64_t frames, video_frames, audio_p
    Audio consumer is single real-time consumer, no locks/allocations in read_audio.
    Error string valid until next operation. paths remain copied for core lifetime. */
 DuoCore *duo_create(const char *system_path, const char *save_path);
+/* Before duo_load: override a core option (e.g. melonds_threaded_renderer) or set the DS nickname
+   (returned to the core's username request). Values are copied. */
+bool duo_set_option(DuoCore *, const char *key, const char *value);
+void duo_set_username(DuoCore *, const char *name);
 bool duo_load(DuoCore *, const char *rom_path);
+/* Executor-only. While muted, the core's audio is discarded (fast-forward keeps one frame in N). */
+void duo_set_audio_muted(DuoCore *, bool muted);
 bool duo_run(DuoCore *, DuoInput);
 void duo_toggle_lid(DuoCore *);
 const uint8_t *duo_frame(DuoCore *, size_t *byte_count, uint64_t *sequence);

@@ -113,9 +113,18 @@ def analyse(events):
     out = []
     for s in sessions:
         ev = s["events"]
-        running = [e for e in ev if e["event"] == "checkpoint" and e["phase"] == "running" and e["core_fps"] > 0]
+        # Fast-forward runs the core above its target on purpose; leave those checkpoints out of speed windows.
+        running, speed = [], 1
+        for e in ev:
+            if e["event"] == "fast-forward":
+                speed = int((re.search(r"speed=(\d+)", e.get("detail", "")) or [None, "1"])[1])
+                running.append(None)  # breaks the window that spans the change
+            elif e["event"] == "checkpoint" and e["phase"] == "running" and e["core_fps"] > 0:
+                running.append(e if speed == 1 else None)
         speed_windows = []
         for a, b in zip(running, running[1:]):
+            if a is None or b is None:
+                continue
             dt, df = b["monotonic"] - a["monotonic"], b["frames"] - a["frames"]
             if dt > 0 and df >= 0:
                 speed_windows.append({"t": round(a["monotonic"] - ev[0]["monotonic"], 1), "fps": df / dt,
@@ -127,6 +136,7 @@ def analyse(events):
             five.setdefault(int(w["t"] // 300), []).append(w["ratio"])
         # Final counters: the last event before stop still carrying them (stop itself reports zeros).
         last = next((e for e in reversed(ev) if e["frames"] > 0), ev[-1])
+        running = [e for e in running if e is not None]
         first_run = running[0] if running else ev[0]
         touches = [e for e in ev if e["event"] == "touch-down"]
         accuracy = []

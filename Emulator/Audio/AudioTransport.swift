@@ -59,6 +59,11 @@ final class AudioTransport {
 
     var isRunning: Bool { engine.isRunning }
 
+    var volume: Float {
+        get { engine.mainMixerNode.outputVolume }
+        set { engine.mainMixerNode.outputVolume = newValue }
+    }
+
     // Called before duo_clear_audio or duo_destroy. AVAudioEngine.stop waits for
     // the render path to stop using the callback's captured core pointer.
     func stop() {

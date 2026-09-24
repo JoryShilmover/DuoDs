@@ -107,6 +107,12 @@ public final class LibraryStore {
         return gamesRoot.appendingPathComponent(component, isDirectory: true)
     }
 
+    /// The cartridge's own icon and title; reads only the ROM header and banner (no hash check).
+    public func banner(for record: GameRecord) -> NDSBanner? {
+        guard Self.validID(record.id) else { return nil }
+        return NDSBanner.read(from: gameDirectory(for: record).appendingPathComponent("game.nds"))
+    }
+
     public func romURL(for record: GameRecord) throws -> URL {
         lock.lock()
         defer { lock.unlock() }

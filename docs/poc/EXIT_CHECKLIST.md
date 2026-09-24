@@ -59,13 +59,13 @@ V07/V08 30-minute 2D and 3D runs, V09 presentation cadence, V10 touch accuracy a
 Added 2026-09-24. Items are ordered by priority within each tier; the suggested build order is Tier 1 top to bottom. Everything in Tiers 1–2 can be built and tested on the iPhone; Tier 3 needs Duo hardware to validate. Some items were deferred in EXECUTION_PLAN.md; they are listed here as post-POC work.
 
 ### Tier 1: needed for a credible release
-- [ ] **Save backup export/import.** Export and import in-game saves and states (per game or all) through the Files app. Today saves live only in the app's own storage.
-- [ ] **Library icons and titles.** Read the icon and title stored in each game file (its banner) and show them in the library instead of filenames.
-- [ ] **Multiple save-state slots and an automatic state on exit.** Several manual slots with thumbnails and timestamps, plus an automatic state when leaving a game; resume from it on launch.
-- [ ] **Fast-forward.** Hold or toggle, 2×/4×; decide how audio behaves (skip or pitch up) while it's on.
-- [ ] **3D performance headroom.** Try the core's threaded renderer (`melonds_threaded_renderer`, currently off), then a 30-minute 3D run (V08-style) on the iPhone and the oldest supported iPhone (iOS 17).
-- [ ] **Settings screen.** Volume and mute, haptics on/off, and the DS user settings some games read (nickname, language, birthday), alongside the existing control settings.
-- [ ] **First-run help.** An empty-library screen that explains how to add your own games, with no ROM or download links.
+- [ ] **Save backup export/import.** Per game: Export/Import Save (raw `.sav`; DeSmuME `.dsv` accepted) from the library's touch-and-hold menu. All games: Back Up All Saves / Restore from Backup (a plain ZIP of saves and manual states, no ROMs). — *built 2026-09-24, awaiting device test*
+- [ ] **Library icons and titles.** Icon, title and publisher read from each game's banner; filename fallback. — *built 2026-09-24, awaiting device test*
+- [ ] **Multiple save-state slots and an automatic state on exit.** Five slots with thumbnails and times (⋯ → Save States…); an automatic state when leaving a game or the app, used on the next launch (D21). — *built 2026-09-24, awaiting device test*
+- [ ] **Fast-forward.** ▶▶ pill (toggle) and ⋯ menu; 2×/3×/4× in Settings; plays one frame's audio in N (D21). — *built 2026-09-24, awaiting device test*
+- [ ] **3D performance headroom.** Threaded renderer now on by default (Settings → Performance). Still needed: a 30-minute 3D run (V08-style) on the iPhone, and on the oldest supported iPhone (iOS 17). — *built 2026-09-24, awaiting device test*
+- [ ] **Settings screen.** Controls, haptics, volume/mute, fast-forward speed, resume toggle, DS profile (nickname, language, birthday, colour), threaded rendering. Gear in the Library; ⋯ → Settings… in game. — *built 2026-09-24, awaiting device test*
+- [ ] **First-run help.** Empty-library screen; `.nds` files copied to the app's Files folder appear under "In your Duo DS folder" with an Add button. — *built 2026-09-24, awaiting device test*
 
 ### Tier 2: expected by experienced users
 - [ ] Controller button remapping (after V17 verifies controller basics).
