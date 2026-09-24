@@ -32,6 +32,7 @@ public enum RuntimeError: LocalizedError {
     /// Resume awaits audio activation; a pause arriving meanwhile must not be dropped.
     private var resuming = false
     private var pauseAfterResume = false
+    public var isResuming: Bool { resuming }
     /// Incremented whenever held input must be dropped; views cancel their own held state on change.
     @Published public private(set) var inputEpoch = 0
     private init() {

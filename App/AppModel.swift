@@ -161,6 +161,7 @@ import UniformTypeIdentifiers
         record("selftest-paused-1s", detail: "frames_advanced=\(session.stats.frames - pausedAt)")
         // Reviewer finding: a pause arriving while resume is still activating audio must win.
         let racing = Task { try? await session.resume() }
+        while !session.isResuming { await Task.yield() } // pause must land while resume is in flight
         await session.pause(); await racing.value
         let before = session.stats.frames; await wait(1)
         record("selftest-pause-during-resume", detail: "phase=\(session.phase.rawValue) frames_advanced=\(session.stats.frames - before)")
