@@ -10,3 +10,4 @@
 - D08: Every user-visible AppModel message is also written to os_log (subsystem org.duods.prototype) and session-events.jsonl (`event: message`), and checkpoints record lit-pixel counts per DS screen, so agents can diagnose without screenshots.
 - D09: `--diagnostic` auto-launch runs only after the scene is active; launching earlier booted straight into paused (startup race).
 - D10: P5 behavior is verified by an in-app `--selftest` driving the same EmulationSession/AppModel APIs as the UI. It does not exercise UIKit touch delivery; UI touch/drag checks still need an XCUITest target or manual trial.
+- D11: Layout scoring is lexicographic: first "reserves a usable control band with both screens ≥170 pt", then smallest-screen width. Split still wins ties. Larger screens with unusable controls are not an acceptable trade.

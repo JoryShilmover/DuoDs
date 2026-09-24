@@ -10,7 +10,7 @@ Starting revision: `e2558fe` on `main`, clean tracked working tree; origin and b
 | P3 | passed (synthetic) | layout_input | 6 layout/input tests pass; display adapter typechecks against 27.1 SDK. Real Duo fold behavior unverified. |
 | P4 | passed (unit) | library_saves | 10 library/persistence tests pass (duplicates, corruption, interrupted writes, version/ROM mismatch, traversal). |
 | P5 | active | root | `--diagnostic --selftest` passes: A input changes frame, release reverts, pause freezes core (0 frames/1 s), held input released across pause/resume, stop→relaunch. Not observed: lid (fixture ignores lid), battery save round trip (no lawful cartridge-save fixture; see FIXTURES.md), real audio interruption, touch on lower screen via UI, layout swap/override. |
-| P6 | active | root | Geometry now logged as `geometry` events. Flat/unfolded landscape: no reserved regions, side-by-side 430×322 pt screens. `simctl` has no posture control; fold transitions need a manual Simulator action. |
+| P6 | active | root | Manual fold trial on Duo simulator (user-driven; `simctl` has no posture control): one boot, frames continuous through half-fold, close→outer, reopen, 2 rotations (no reboot). Half-fold: `split` layout clear of 40 pt division. Controls were missing on outer display and crammed in portrait → solver fixed; re-trial of portrait/outer pending. |
 | P7 | not run | — | Simulator-only run (D06). G1/G3 not run. |
 | P8 | not started | — | Fresh read-only reviewer at end. |
 
@@ -30,6 +30,9 @@ P0–P4 as above. Run ended (usage limit) ~17:42 local while root was rebuilding
 - Frames were then all black: fixture bug, not rendering (BG2CNT 0x4080 → 0x4084). After fix, both screens render in the Duo simulator (side-by-side in unfolded landscape). 17 logic tests still pass.
 - Added `--selftest` (scripted P5 checks → `selftest-*` events with per-screen lit counts and mean RGB) and `geometry` events (bounds, safe area, active reserved regions, chosen mode/rects). Evidence copy: `artifacts/poc/2026-09-23-resume/logs/selftest-events.jsonl` (local).
 - Fixed: Resume button was a stacked row, so every pause resized the play area and moved both screens; now an overlay (no geometry change on pause).
+- Fold trial (`artifacts/poc/2026-09-23-resume/fold/`, `logs/fold-events.jsonl`, local): see P6 row. Geometry observed: inner landscape 867×523 pt; half-fold division `456,-82 40x669`; outer display 382×532 pt; inner portrait 669×805 pt. Transient geometry with stale reserved regions appears for ~1 frame during transitions (harmless; each change cancels touches).
+- Fixed solver ranking: control-band candidates now outrank larger screens when both screens stay ≥170 pt wide. Regression test `testObservedDuoGeometriesKeepUsableControls` uses the observed sizes. 18 tests pass.
+- Not yet explained: a horizontal seam in the fixture's top screen in one portrait screenshot. Likely the fixture writing VRAM past vblank (tearing in emulated content), not host presentation — unverified.
 
 ## How to resume (for any agent)
 1. `DEVELOPER_DIR=/Applications/Xcode-Beta.app/Contents/Developer`; first-time: `scripts/bootstrap-tools.sh`, then `scripts/build-poc.sh --diagnostic --configuration Debug` (full core build) or `--skip-core` if `build/core-simulator/libDuoCoreCombined.a` exists.

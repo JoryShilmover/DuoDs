@@ -60,6 +60,11 @@ public struct LayoutSolution: Equatable {
 public enum ScreenLayoutSolver {
     private static let aspect: CGFloat = 4.0 / 3.0
     private static let gutter: CGFloat = 8
+    /// Keeping a control band outranks larger screens, as long as both screens stay legible;
+    /// otherwise controls end up in unusable slivers (seen in Duo portrait and outer display).
+    private static func score(minWidth: CGFloat, reservesControls: Bool) -> CGFloat {
+        minWidth + (reservesControls && minWidth >= 170 ? 10_000 : 0)
+    }
 
     public static func solve(environment: DisplayEnvironment,
                              preference: ScreenLayoutPreference = .automatic,
@@ -150,7 +155,7 @@ public enum ScreenLayoutSolver {
         let first = fit(slots.0), second = fit(slots.1)
         guard first.width > 0, second.width > 0 else { return nil }
         return Candidate(first: first, second: second, mode: mode,
-                         score: min(first.width, second.width) + (controlHeight > 0 ? 2 : 0))
+                         score: score(minWidth: min(first.width, second.width), reservesControls: controlHeight > 0))
     }
 
     private static func fitSplit(_ a: CGRect, _ b: CGRect, safe: CGRect, controlHeight: CGFloat) -> Candidate? {
@@ -169,7 +174,7 @@ public enum ScreenLayoutSolver {
         // A split should win automatically only if each screen remains legible.
         guard minWidth >= min(170, safe.width * 0.38) else { return nil }
         return Candidate(first: first, second: second, mode: .split,
-                         score: minWidth + (controlHeight > 0 ? 3 : 0))
+                         score: score(minWidth: minWidth, reservesControls: controlHeight > 0) + 1) // split wins ties
     }
 
     private static func maximalFreeRects(in safe: CGRect, avoiding barriers: [CGRect]) -> [CGRect] {

@@ -101,4 +101,21 @@ final class LayoutInputTests: XCTestCase {
         router.cancelTransientInputs()
         XCTAssertEqual(router.snapshot.buttons, 0)
     }
+
+    /// Geometries observed on the iPhone Duo simulator (2026-09-23 fold trial). A layout without a
+    /// usable control band is unplayable, so it must not win just because the screens get larger.
+    func testObservedDuoGeometriesKeepUsableControls() {
+        for (name, size) in [("inner portrait", CGSize(width: 669, height: 805)),
+                             ("outer display", CGSize(width: 382, height: 532)),
+                             ("inner landscape", CGSize(width: 867, height: 523))] {
+            let safe = rect(0, 0, size.width, size.height)
+            let result = ScreenLayoutSolver.solve(environment: DisplayEnvironment(bounds: safe, safeBounds: safe))
+            XCTAssertTrue(result.controlRegions.contains { $0.width >= 7 * 36 && $0.height >= 72 },
+                          "\(name): no control region can host the 7x2 button grid")
+            XCTAssertFalse(result.isCompact, name)
+            for controls in result.controlRegions {
+                XCTAssertFalse(controls.intersects(result.upperScreen) || controls.intersects(result.lowerScreen), name)
+            }
+        }
+    }
 }
