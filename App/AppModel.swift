@@ -141,11 +141,39 @@ import UniformTypeIdentifiers
             record(save ? "state-save" : "state-load")
         } catch { message = error.localizedDescription }
     }
+    /// `--selftest` (with `--diagnostic`): scripted P5 checks through the same session APIs the UI uses.
+    /// Results are `selftest-*` events in session-events.jsonl; see docs/poc/WORK_LOG.md for interpretation.
+    func runSelfTest() async {
+        func wait(_ seconds: Double) async { try? await Task.sleep(nanoseconds: UInt64(seconds * 1e9)) }
+        guard let game = current else { record("selftest-abort", detail: "no game"); return }
+        await wait(2); record("selftest-baseline")
+        var held = DSInput(); held.buttons = 1 << UInt16(DSButton.a.rawValue)
+        session.setInput(held); await wait(1); record("selftest-hold-a")
+        session.releaseInputs(); await wait(1); record("selftest-release")
+        session.toggleLid(); await wait(1); record("selftest-lid-closed")
+        session.toggleLid(); await wait(1); record("selftest-lid-open")
+        session.setInput(held)
+        await pauseAndSave(reason: "selftest-pause")
+        let pausedAt = session.stats.frames; await wait(1)
+        record("selftest-paused-1s", detail: "frames_advanced=\(session.stats.frames - pausedAt)")
+        foreground = true; await resume(); await wait(1); record("selftest-resumed")
+        await close(); record("selftest-closed", detail: "current=\(current?.title ?? "nil")")
+        await launch(game); await wait(2); record("selftest-relaunched")
+        record("selftest-done")
+    }
     func diagnosticIfRequested() async {
         guard !automaticLaunchDone else { return }; automaticLaunchDone = true
         guard ProcessInfo.processInfo.arguments.contains("--diagnostic"), let url = Bundle.main.url(forResource: "duo-diagnostic", withExtension: "nds") else { return }
         await importROM(url)
-        if let game = games.first(where: { $0.title == "duo-diagnostic" }) { await launch(game) }
+        if let game = games.first(where: { $0.title == "duo-diagnostic" }) {
+            await launch(game)
+            if ProcessInfo.processInfo.arguments.contains("--selftest") { await runSelfTest() }
+        }
+    }
+    func recordGeometry(_ environment: DisplayEnvironment, _ solution: LayoutSolution) {
+        func r(_ c: CGRect) -> String { String(format: "%.0f,%.0f %.0fx%.0f", c.minX, c.minY, c.width, c.height) }
+        let regions = environment.reservedRegions.map { "\($0.kind):\(r($0.frame))" }.joined(separator: ";")
+        record("geometry", detail: "bounds=\(r(environment.bounds)) safe=\(r(environment.safeBounds)) regions=[\(regions)] mode=\(solution.effectiveMode) compact=\(solution.isCompact) upper=\(r(solution.upperScreen)) lower=\(r(solution.lowerScreen))")
     }
     func record(_ event: String, detail: String? = nil) {
         let s = session.stats
@@ -153,12 +181,17 @@ import UniformTypeIdentifiers
         if let detail { fields["detail"] = detail }
         if let frame = session.frame {
             // Evidence that real pixels reached the app: count non-black pixels per DS screen.
-            var lit = [0, 0]
+            var lit = [0, 0]; var sum = [[0, 0, 0], [0, 0, 0]] // per screen R,G,B
             frame.pixels.withUnsafeBytes { raw in
                 let px = raw.bindMemory(to: UInt32.self)
-                for i in 0..<min(px.count, 256 * 384) where px[i] & 0x00FF_FFFF != 0 { lit[i < 256 * 192 ? 0 : 1] += 1 }
+                for i in 0..<min(px.count, 256 * 384) {
+                    let v = px[i], s = i < 256 * 192 ? 0 : 1 // BGRA bytes -> little-endian 0xAARRGGBB
+                    if v & 0x00FF_FFFF != 0 { lit[s] += 1 }
+                    sum[s][0] += Int((v >> 16) & 0xFF); sum[s][1] += Int((v >> 8) & 0xFF); sum[s][2] += Int(v & 0xFF)
+                }
             }
             fields["frame_sequence"] = frame.sequence; fields["lit_top"] = lit[0]; fields["lit_lower"] = lit[1]
+            fields["mean_rgb_top"] = sum[0].map { $0 / (256 * 192) }; fields["mean_rgb_lower"] = sum[1].map { $0 / (256 * 192) }
         }
         guard var data = try? JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys]) else { return }
         data.append(10)

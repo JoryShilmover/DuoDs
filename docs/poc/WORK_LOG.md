@@ -9,8 +9,8 @@ Starting revision: `e2558fe` on `main`, clean tracked working tree; origin and b
 | P2 | passed (simulator) | root | Real DS execution of the authored fixture on iPhone Duo simulator: both screens rendered, 59.83 Hz core, audio flowing (`artifacts/poc/2026-09-23-resume/screens/fixture-fixed.png`, local only). Native bridge tests pass under ASan/UBSan. No physical-device performance evidence (D06). |
 | P3 | passed (synthetic) | layout_input | 6 layout/input tests pass; display adapter typechecks against 27.1 SDK. Real Duo fold behavior unverified. |
 | P4 | passed (unit) | library_saves | 10 library/persistence tests pass (duplicates, corruption, interrupted writes, version/ROM mismatch, traversal). |
-| P5 | active | root | Import → boot → run works for the diagnostic. Remaining: input observed in-frame, lid, pause/interrupt/resume, battery save round trip, layout swap/override. |
-| P6 | not started | — | Needs P5 boot working. |
+| P5 | active | root | `--diagnostic --selftest` passes: A input changes frame, release reverts, pause freezes core (0 frames/1 s), held input released across pause/resume, stop→relaunch. Not observed: lid (fixture ignores lid), battery save round trip (no lawful cartridge-save fixture; see FIXTURES.md), real audio interruption, touch on lower screen via UI, layout swap/override. |
+| P6 | active | root | Geometry now logged as `geometry` events. Flat/unfolded landscape: no reserved regions, side-by-side 430×322 pt screens. `simctl` has no posture control; fold transitions need a manual Simulator action. |
 | P7 | not run | — | Simulator-only run (D06). G1/G3 not run. |
 | P8 | not started | — | Fresh read-only reviewer at end. |
 
@@ -28,10 +28,13 @@ P0–P4 as above. Run ended (usage limit) ~17:42 local while root was rebuilding
 - Root cause of boot failure: bridge passed only `path` but the core needs `data`/`size` (D07). Fixed in `DuoCore.cpp`; native test now asserts bytes are supplied.
 - Added error logging (D08) and fixed diagnostic auto-launch race (D09).
 - Frames were then all black: fixture bug, not rendering (BG2CNT 0x4080 → 0x4084). After fix, both screens render in the Duo simulator (side-by-side in unfolded landscape). 17 logic tests still pass.
+- Added `--selftest` (scripted P5 checks → `selftest-*` events with per-screen lit counts and mean RGB) and `geometry` events (bounds, safe area, active reserved regions, chosen mode/rects). Evidence copy: `artifacts/poc/2026-09-23-resume/logs/selftest-events.jsonl` (local).
+- Fixed: Resume button was a stacked row, so every pause resized the play area and moved both screens; now an overlay (no geometry change on pause).
 
 ## How to resume (for any agent)
 1. `DEVELOPER_DIR=/Applications/Xcode-Beta.app/Contents/Developer`; first-time: `scripts/bootstrap-tools.sh`, then `scripts/build-poc.sh --diagnostic --configuration Debug` (full core build) or `--skip-core` if `build/core-simulator/libDuoCoreCombined.a` exists.
 2. `scripts/test-poc.sh` for logic tests.
 3. Simulator run: `xcrun simctl install booted build/DerivedData/Build/Products/Debug-iphonesimulator/DuoDS.app && xcrun simctl launch --console-pty booted org.duods.prototype --diagnostic`.
-4. Session events: `<app data container>/Library/Application Support/DuoDS/session-events.jsonl`.
-5. Read the latest entry in this log and `DECISIONS.md` before changing anything.
+4. Scripted checks: add `--selftest` after `--diagnostic`; wait ~20 s, then read `selftest-*` events.
+5. Session events: `<app data container>/Library/Application Support/DuoDS/session-events.jsonl`.
+6. Read the latest entry in this log and `DECISIONS.md` before changing anything.

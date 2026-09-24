@@ -9,3 +9,4 @@
 - D07: melonDS DS declares need_fullpath=false, so the bridge reads the ROM into a host-owned buffer that lives until unload and passes data/size (previously path only → "Loaded an empty file as content").
 - D08: Every user-visible AppModel message is also written to os_log (subsystem org.duods.prototype) and session-events.jsonl (`event: message`), and checkpoints record lit-pixel counts per DS screen, so agents can diagnose without screenshots.
 - D09: `--diagnostic` auto-launch runs only after the scene is active; launching earlier booted straight into paused (startup race).
+- D10: P5 behavior is verified by an in-app `--selftest` driving the same EmulationSession/AppModel APIs as the UI. It does not exercise UIKit touch delivery; UI touch/drag checks still need an XCUITest target or manual trial.

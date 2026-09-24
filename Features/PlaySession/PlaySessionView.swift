@@ -10,6 +10,8 @@ public final class PlaySessionCanvas: UIView {
     public var onInput: ((DSInput) -> Void)?
     public var onPause: (() -> Void)?
     public var onLidToggle: (() -> Void)?
+    /// Diagnostics only: reports each new geometry solution (e.g. fold/unfold, resize).
+    public var onGeometry: ((DisplayEnvironment, LayoutSolution) -> Void)?
     public var layoutPreference: ScreenLayoutPreference = .automatic { didSet { lastEnvironment = nil; refreshGeometry() } }
     public var swapScreens = false { didSet { lastEnvironment = nil; refreshGeometry() } }
 
@@ -95,8 +97,10 @@ public final class PlaySessionCanvas: UIView {
         bottomView.frame = solution.lowerScreen
         inputSurface.frame = bounds
         inputSurface.configure(solution: solution)
+        let changed = solution != lastSolution
         lastEnvironment = environment
         lastSolution = solution
+        if changed { onGeometry?(environment, solution) }
     }
 }
 
@@ -107,16 +111,19 @@ public struct PlaySessionView: UIViewRepresentable {
     public var onInput: (DSInput) -> Void
     public var onPause: () -> Void
     public var onLidToggle: () -> Void
+    public var onGeometry: (DisplayEnvironment, LayoutSolution) -> Void
 
     public init(frame: DSFrame?, preference: ScreenLayoutPreference = .automatic,
                 swapScreens: Bool = false, onInput: @escaping (DSInput) -> Void,
-                onPause: @escaping () -> Void = {}, onLidToggle: @escaping () -> Void = {}) {
+                onPause: @escaping () -> Void = {}, onLidToggle: @escaping () -> Void = {},
+                onGeometry: @escaping (DisplayEnvironment, LayoutSolution) -> Void = { _, _ in }) {
         self.frame = frame
         self.preference = preference
         self.swapScreens = swapScreens
         self.onInput = onInput
         self.onPause = onPause
         self.onLidToggle = onLidToggle
+        self.onGeometry = onGeometry
     }
 
     public func makeUIView(context: Context) -> PlaySessionCanvas { PlaySessionCanvas(frame: .zero) }
@@ -125,6 +132,7 @@ public struct PlaySessionView: UIViewRepresentable {
         view.onInput = onInput
         view.onPause = onPause
         view.onLidToggle = onLidToggle
+        view.onGeometry = onGeometry
         view.layoutPreference = preference
         view.swapScreens = swapScreens
         view.update(frame: frame)

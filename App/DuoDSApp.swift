@@ -24,15 +24,19 @@ struct RootView: View {
                         PlaySessionView(frame: session.frame, preference: preference, swapScreens: swapped,
                                         onInput: { session.setInput($0) },
                                         onPause: { Task { await model.pauseAndSave(reason: "explicit-pause") } },
-                                        onLidToggle: { session.toggleLid() })
+                                        onLidToggle: { session.toggleLid() },
+                                        onGeometry: { model.recordGeometry($0, $1) })
+                        // Overlay, not a stacked row: pausing must not resize the play area and move the DS screens.
+                        .overlay {
+                            if session.phase == .paused {
+                                Button("Resume") { Task { await model.resume() } }.buttonStyle(.borderedProminent).controlSize(.large)
+                            }
+                        }
                         HStack {
                             Text(session.phase.rawValue.capitalized)
                             Spacer()
                             Text("\(session.stats.frames) frames · \(session.stats.fps, specifier: "%.2f") Hz core")
                         }.font(.caption.monospacedDigit()).padding(8)
-                        if session.phase == .paused {
-                            Button("Resume") { Task { await model.resume() } }.buttonStyle(.borderedProminent).padding(8)
-                        }
                         if let error = session.errorMessage { Text(error).foregroundStyle(.red).padding() }
                     }
                 } else {
