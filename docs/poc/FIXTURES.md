@@ -11,3 +11,7 @@ Intended checks: two native 2D bitmaps, visible frame advancement, button-depend
 Not covered: 3D workload, touch-coordinate reporting, microphone, cartridge save, homebrew SD save, supported serialization. In particular this fixture cannot pass V02's persistent-save requirement or V20. No approved serialization-capable title or cartridge-save fixture has been supplied. Do not acquire commercial content to fill that gap.
 
 No generated ROM, BIOS, firmware, save or state is tracked. User content is imported locally through the system picker. Raw evidence cannot include those assets.
+
+## User-supplied corpus
+
+`user-01`: a commercial DS title supplied by the user for local testing (cartridge save, 3D overworld). Identifier and SHA-256 are kept privately in ignored `artifacts/poc/private-corpus.md`, never in the repository. Placed in the simulator's Files "On My iPhone" storage for import through the app's file picker. No BIOS/firmware supplied; the core's built-in FreeBIOS is used, so compatibility is not guaranteed.
