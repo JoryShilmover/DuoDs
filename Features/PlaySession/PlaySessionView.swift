@@ -12,6 +12,7 @@ public final class PlaySessionCanvas: UIView {
     public var onLidToggle: (() -> Void)?
     /// Diagnostics only: reports each new geometry solution (e.g. fold/unfold, resize).
     public var onGeometry: ((DisplayEnvironment, LayoutSolution) -> Void)?
+    public var inputEpoch = 0 { didSet { if inputEpoch != oldValue { cancelInput() } } }
     public var layoutPreference: ScreenLayoutPreference = .automatic { didSet { lastEnvironment = nil; refreshGeometry() } }
     public var swapScreens = false { didSet { lastEnvironment = nil; refreshGeometry() } }
 
@@ -112,11 +113,14 @@ public struct PlaySessionView: UIViewRepresentable {
     public var onPause: () -> Void
     public var onLidToggle: () -> Void
     public var onGeometry: (DisplayEnvironment, LayoutSolution) -> Void
+    /// Changes when the owner releases all input (pause, interruption); held touches/buttons are cancelled.
+    public var inputEpoch: Int
 
     public init(frame: DSFrame?, preference: ScreenLayoutPreference = .automatic,
                 swapScreens: Bool = false, onInput: @escaping (DSInput) -> Void,
                 onPause: @escaping () -> Void = {}, onLidToggle: @escaping () -> Void = {},
-                onGeometry: @escaping (DisplayEnvironment, LayoutSolution) -> Void = { _, _ in }) {
+                onGeometry: @escaping (DisplayEnvironment, LayoutSolution) -> Void = { _, _ in },
+                inputEpoch: Int = 0) {
         self.frame = frame
         self.preference = preference
         self.swapScreens = swapScreens
@@ -124,6 +128,7 @@ public struct PlaySessionView: UIViewRepresentable {
         self.onPause = onPause
         self.onLidToggle = onLidToggle
         self.onGeometry = onGeometry
+        self.inputEpoch = inputEpoch
     }
 
     public func makeUIView(context: Context) -> PlaySessionCanvas { PlaySessionCanvas(frame: .zero) }
@@ -133,6 +138,7 @@ public struct PlaySessionView: UIViewRepresentable {
         view.onPause = onPause
         view.onLidToggle = onLidToggle
         view.onGeometry = onGeometry
+        view.inputEpoch = inputEpoch
         view.layoutPreference = preference
         view.swapScreens = swapScreens
         view.update(frame: frame)

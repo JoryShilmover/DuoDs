@@ -37,7 +37,10 @@ import UniformTypeIdentifiers
         interruption = NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in await self?.pauseAndSave(reason: "audio-interruption") }
         }
-        routeChange = NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] _ in
+        routeChange = NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] note in
+            // Pause only when output disappears (e.g. headphones unplugged); the app's own category/activation changes also post this.
+            let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+            guard raw.flatMap(AVAudioSession.RouteChangeReason.init(rawValue:)) == .oldDeviceUnavailable else { return }
             Task { @MainActor in await self?.pauseAndSave(reason: "audio-route-change") }
         }
         checkpoint = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
@@ -156,6 +159,11 @@ import UniformTypeIdentifiers
         await pauseAndSave(reason: "selftest-pause")
         let pausedAt = session.stats.frames; await wait(1)
         record("selftest-paused-1s", detail: "frames_advanced=\(session.stats.frames - pausedAt)")
+        // Reviewer finding: a pause arriving while resume is still activating audio must win.
+        let racing = Task { try? await session.resume() }
+        await session.pause(); await racing.value
+        let before = session.stats.frames; await wait(1)
+        record("selftest-pause-during-resume", detail: "phase=\(session.phase.rawValue) frames_advanced=\(session.stats.frames - before)")
         foreground = true; await resume(); await wait(1); record("selftest-resumed")
         await close(); record("selftest-closed", detail: "current=\(current?.title ?? "nil")")
         await launch(game); await wait(2); record("selftest-relaunched")

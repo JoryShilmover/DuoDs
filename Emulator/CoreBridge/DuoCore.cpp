@@ -34,14 +34,17 @@ std::atomic<DuoCore*> g_active{nullptr};
 
 struct DuoCore {
     std::string system_path, save_path, rom_path, error;
-    // Core sets need_fullpath=false and keeps retro_game_info; bytes must outlive the loaded game.
+    // Core sets need_fullpath=false: host supplies bytes. The core copies them (retro/info.cpp), so this
+    // buffer is freed right after retro_load_game to avoid holding an extra full ROM in memory.
     std::vector<uint8_t> rom_data;
     SPSCAudioRing audio;
     std::vector<uint8_t> frame = std::vector<uint8_t>(kFrameBytes);
     DuoInput input{};
     double fps = 0, sample_rate = 0;
     uint64_t frames = 0, video_frames = 0;
-    bool initialized = false, loaded = false, shutdown = false, lid_pulse = false;
+    bool initialized = false, loaded = false, shutdown = false, lid_pulse = false, lid_pulsed_last = false;
+    // Lid toggles queue so rapid requests are not merged; the core toggles on a rising edge, so pulses need a release frame between them.
+    unsigned lid_pending = 0;
     bool valid_video = false;
 };
 
@@ -213,6 +216,7 @@ bool duo_load(DuoCore* c, const char* rom_path) {
     info.data = c->rom_data.data();
     info.size = c->rom_data.size();
     const bool loaded = retro_load_game(&info);
+    std::vector<uint8_t>().swap(c->rom_data);
     c->loaded = loaded;
     if (!loaded || c->shutdown) {
         if (c->error.empty()) c->error = "The core could not load this DS file";
@@ -232,13 +236,16 @@ bool duo_run(DuoCore* c, DuoInput input) {
     if (!c || c != current() || !c->loaded || c->shutdown) return false;
     c->error.clear();
     c->input = input;
+    c->lid_pulse = !c->lid_pulsed_last && c->lid_pending > 0;
+    if (c->lid_pulse) --c->lid_pending;
     retro_run();
+    c->lid_pulsed_last = c->lid_pulse;
     c->lid_pulse = false;
     ++c->frames;
     return !c->shutdown;
 }
 
-void duo_toggle_lid(DuoCore* c) { if (c && c == current()) c->lid_pulse = true; }
+void duo_toggle_lid(DuoCore* c) { if (c && c == current() && c->lid_pending < 8) ++c->lid_pending; }
 
 const uint8_t* duo_frame(DuoCore* c, size_t* byte_count, uint64_t* sequence) {
     if (byte_count) *byte_count = c && c->valid_video ? kFrameBytes : 0;

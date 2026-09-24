@@ -12,7 +12,7 @@ Starting revision: `e2558fe` on `main`, clean tracked working tree; origin and b
 | P5 | active | root | `--diagnostic --selftest` passes: A input changes frame, release reverts, pause freezes core (0 frames/1 s), held input released across pause/resume, stop→relaunch. Not observed: lid (fixture ignores lid), battery save round trip (no lawful cartridge-save fixture; see FIXTURES.md), real audio interruption, touch on lower screen via UI, layout swap/override. |
 | P6 | active | root | Manual fold trial on Duo simulator (user-driven; `simctl` has no posture control): one boot, frames continuous through half-fold, close→outer, reopen, 2 rotations (no reboot). Half-fold: `split` layout clear of 40 pt division. Controls were missing on outer display and crammed in portrait → solver fixed (D11) and re-verified on the simulator: half-fold landscape and portrait splits with full controls, outer landscape with controls. Remaining: outer-display portrait under the fix (covered by unit test only), lower-band control placement (unit-level change, not re-observed), real hardware. |
 | P7 | not run | — | Simulator-only run (D06). G1/G3 not run. |
-| P8 | not started | — | Fresh read-only reviewer at end. |
+| P8 | active | reviewer (fresh, read-only) → root | Review of `cf6cb68`: verdict "ship with fixes", no critical findings, no inflated gate claims. Findings and resolutions below. |
 
 No ROMs, firmware, keys, saves, or device identifiers belong in tracked evidence. Raw local evidence goes in ignored artifacts/poc/.
 
@@ -35,6 +35,16 @@ P0–P4 as above. Run ended (usage limit) ~17:42 local while root was rebuilding
 - Not yet explained: a horizontal seam in the fixture's top screen in one portrait screenshot. Likely the fixture writing VRAM past vblank (tearing in emulated content), not host presentation — unverified.
 - Re-trial (`fold2/`, `logs/fold2-events.jsonl`, local): 1 boot, frames continuous through half-fold → half-fold portrait → outer landscape (594×320 pt) → unfold. Controls present in every posture. Outer landscape put controls in the top band; canvas now prefers the lowest qualifying band.
 - Fresh-clone reproduction (V19-style, same machine, by root agent — not an independent operator): first attempt at `3f6fc38` FAILED in `fetch-dependencies.py` ("Core local diff differs from retained patch") because the patch stored abbreviated blob hashes whose length depends on clone size. Fixed in `7cc609b` (`--full-index`). Re-run from a fresh clone of `7cc609b`: bootstrap → fetch (all revisions + patch verified) → core build → app build SUCCEEDED in 53 s; fixture SHA-256 `c8c5e019…d175` matches FIXTURES.md; 18 tests pass. Separate caches (scratch clone), shared Xcode/SwiftPM system caches.
+- P8 review findings → resolution:
+  1. [med-high] Pause during in-flight resume was dropped (scene inactive while audio activating → game runs in background). FIXED: `EmulationSession` defers the pause until resume completes; stop during resume is not overwritten. `--selftest` step `selftest-pause-during-resume` added — not yet run on simulator.
+  2. [med] Router/view held input never cancelled on pause (stuck controller button after background). FIXED: `releaseInputs()` bumps `inputEpoch`; `PlaySessionCanvas` cancels contacts and router state on change. Needs a real controller to observe.
+  3. [med] Lid chord L2+Y also pressed DS Y for a frame; queued toggles merged. FIXED: core patch masks DS Y while L2 held (`input/joypad.cpp`); bridge queues pulses with a release frame between (native test covers 2 toggles).
+  4. [med] ROM resident 3× (core copies bytes in `retro/info.cpp`). FIXED: bridge frees its buffer after `retro_load_game` (D07 corrected).
+  5. [med] Pause on every audio route change; thin audio lead (5–7 underruns per boot/resume, ~25 ms steady lead); no drift correction; silent freeze if engine stops unobserved. PARTIAL: route-change pause now only on `.oldDeviceUnavailable`. Audio lead/prefill, drift control and engine-stop detection remain OPEN (S2 on simulator; must be measured on device, V11).
+  6. [low] Battery flush skipped after runtime core failure (≤10 s of cartridge writes lost). OPEN, documented.
+  7. [low] Docs/licensing: FIXTURES button-color now marked observed. OPEN for user decision: app LICENSE and GPLv3 corresponding-source offer needed before any distribution.
+  Reviewer could not verify: device audio/route behavior, device JIT symbols, homebrew SD (DLDI) save durability, multi-scene ownership (`owner` never released on scene disconnect).
+- User-supplied commercial title `user-01` (see FIXTURES.md; identity private) imported through the file picker on the Duo simulator: boots with built-in FreeBIOS, 3D overworld renders, gameplay reached, 59.83 Hz core, 4 underruns over ~19k frames (simulator — not a performance result). Cartridge save round trip not yet attempted.
 
 ## How to resume (for any agent)
 1. `DEVELOPER_DIR=/Applications/Xcode-Beta.app/Contents/Developer`; first-time: `scripts/bootstrap-tools.sh`, then `scripts/build-poc.sh --diagnostic --configuration Debug` (full core build) or `--skip-core` if `build/core-simulator/libDuoCoreCombined.a` exists.

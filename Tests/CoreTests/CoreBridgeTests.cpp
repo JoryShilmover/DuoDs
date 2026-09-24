@@ -107,11 +107,16 @@ int main() {
     controls.touch_x = 255;
     controls.touch_y = 191;
     duo_toggle_lid(core);
+    duo_toggle_lid(core); // two quick toggles must stay two pulses, separated by a release frame
     assert(duo_run(core, controls));
     assert(last_buttons & (1u << RETRO_DEVICE_ID_JOYPAD_A));
     assert(last_buttons & (1u << RETRO_DEVICE_ID_JOYPAD_L2));
     assert(last_buttons & (1u << RETRO_DEVICE_ID_JOYPAD_Y));
     assert(last_pointer_x > 32000 && last_pointer_y > 32000);
+    assert(duo_run(core, controls));
+    assert(!(last_buttons & (1u << RETRO_DEVICE_ID_JOYPAD_L2)));
+    assert(duo_run(core, controls));
+    assert(last_buttons & (1u << RETRO_DEVICE_ID_JOYPAD_L2));
     assert(duo_run(core, controls));
     assert(!(last_buttons & (1u << RETRO_DEVICE_ID_JOYPAD_L2)));
     controls.touch_x = 0;
@@ -121,7 +126,7 @@ int main() {
     assert(std::abs(last_pointer_y) < 100); // y=192 is the lower screen's first row.
     size_t frame_size = 0; uint64_t frame_id = 0;
     const uint8_t* frame = duo_frame(core, &frame_size, &frame_id);
-    assert(frame && frame_size == 256 * 384 * 4 && frame_id == 3);
+    assert(frame && frame_size == 256 * 384 * 4 && frame_id == 5); // 3 input runs + 2 lid-queue runs
     assert(frame[0] == 0x33 && frame[1] == 0x22 && frame[2] == 0x11 && frame[3] == 0xff);
     assert(frame[frame_size - 1] == 0xff);
     float native_audio[8]{};

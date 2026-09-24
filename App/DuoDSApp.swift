@@ -25,7 +25,8 @@ struct RootView: View {
                                         onInput: { session.setInput($0) },
                                         onPause: { Task { await model.pauseAndSave(reason: "explicit-pause") } },
                                         onLidToggle: { session.toggleLid() },
-                                        onGeometry: { model.recordGeometry($0, $1) })
+                                        onGeometry: { model.recordGeometry($0, $1) },
+                                        inputEpoch: session.inputEpoch)
                         // Overlay, not a stacked row: pausing must not resize the play area and move the DS screens.
                         .overlay {
                             if session.phase == .paused {

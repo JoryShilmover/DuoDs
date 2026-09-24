@@ -29,6 +29,11 @@ public enum RuntimeError: LocalizedError {
     public var microphoneAvailable: Bool { false }
 
     private let worker = RuntimeWorker()
+    /// Resume awaits audio activation; a pause arriving meanwhile must not be dropped.
+    private var resuming = false
+    private var pauseAfterResume = false
+    /// Incremented whenever held input must be dropped; views cancel their own held state on change.
+    @Published public private(set) var inputEpoch = 0
     private init() {
         let worker = self.worker
         worker.publish = { [weak self, weak worker] pixels, sequence, statistics in
@@ -65,9 +70,17 @@ public enum RuntimeError: LocalizedError {
     }
 
     public func resume() async throws {
-        guard phase == .paused else { return }
+        guard phase == .paused, !resuming else { return }
+        resuming = true; pauseAfterResume = false
+        defer { resuming = false }
         do {
             try await worker.perform { try self.worker.resume() }
+            // Stop/failure may have happened while awaiting; never resurrect those phases.
+            guard phase == .paused else { return }
+            if pauseAfterResume {
+                try? await worker.perform { self.worker.pause() }
+                return
+            }
             phase = .running
         } catch {
             phase = .failed
@@ -77,6 +90,7 @@ public enum RuntimeError: LocalizedError {
     }
 
     public func pause() async {
+        if resuming { pauseAfterResume = true; return }
         guard phase == .running else { return }
         phase = .paused
         try? await worker.perform { self.worker.pause() }
@@ -98,6 +112,7 @@ public enum RuntimeError: LocalizedError {
 
     public func releaseInputs() {
         setInput(DSInput())
+        inputEpoch &+= 1
     }
 
     public func toggleLid() {

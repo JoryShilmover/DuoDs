@@ -49,6 +49,19 @@ index 3698a6b60c7120a47a2254fef37eb4202f5cb4b2..5c2319dcb12ffb54a82f1caa340408b3
  }
  
  auto fmt::formatter<MelonDsDs::BiosType>::format(MelonDsDs::BiosType c, format_context& ctx) const -> decltype(ctx.out()) {
+diff --git a/src/libretro/input/joypad.cpp b/src/libretro/input/joypad.cpp
+index fabccaa12a394fb01d9c6db4e2a8940a106798f0..528be60b1bf4f09ec5c3e1582def42f087084f13 100644
+--- a/src/libretro/input/joypad.cpp
++++ b/src/libretro/input/joypad.cpp
+@@ -83,6 +83,8 @@ void JoypadState::Update(const InputPollResult& poll) noexcept {
+     _consoleButtons = ndsInputBits;
+ 
+     _joystickSpeedupCursorButton = poll.JoypadButtons & (1 << RETRO_DEVICE_ID_JOYPAD_L2);
++    // Duo DS host: L2+Y is only the lid-toggle chord; do not also press DS Y (key mask is active-low).
++    if (_joystickSpeedupCursorButton) _consoleButtons |= (1 << 11);
+ 
+     _previousMicButton = _micButton;
+     _micButton = poll.JoypadButtons & (1 << RETRO_DEVICE_ID_JOYPAD_L3);
 diff --git a/src/libretro/net/net.cpp b/src/libretro/net/net.cpp
 index 0bc67e8d5be090af401100c7d7768667169150d5..6b1f9efb209946c163de9933bd514695e461109e 100644
 --- a/src/libretro/net/net.cpp
