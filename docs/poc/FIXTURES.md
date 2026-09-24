@@ -2,7 +2,9 @@
 
 `duo-diagnostic-v1` is original assembly in `Fixtures/Diagnostic`, MIT licensed. `scripts/build-fixture.py` assembles it using Apple clang and constructs a homebrew header without copyrighted logo/BIOS/firmware assets. Output stays under ignored `build/fixtures/`.
 
-Initial output SHA-256: `fbfb9cc8b209c75294511699cca02be0db4a136ec5faa1d927a5526b7ec4ad39` (131072 bytes). Build-generated manifest is authoritative after source changes.
+Initial output SHA-256 was `fbfb9cc8…ad39`; it rendered black because BG2CNT selected a paletted bitmap (0x4080). Fixed to direct color (0x4084): current SHA-256 `c8c5e019171b5ede3842f4de48444ac6a77865c8fb9dfe1804c09d867005d175` (131072 bytes). Build-generated manifest is authoritative after source changes.
+
+Observed 2026-09-23 on iPhone Duo simulator (iOS 27.1): both native bitmaps lit (top 47616 / lower 49152 non-black pixels), frames advance at core 59.83 Hz, PSG audio produced/consumed. Button-dependent color and lid not yet observed.
 
 Intended checks: two native 2D bitmaps, visible frame advancement, button-dependent color, generated PSG audio; explicit emulated lid via core. Runtime behavior must be observed before a check passes.
 

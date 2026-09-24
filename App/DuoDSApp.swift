@@ -85,7 +85,7 @@ struct RootView: View {
                 Button("OK") { model.message = nil }
             } message: { Text(model.message ?? "") }
         }
-        .task { model.claim(sceneID); await model.active(scenePhase == .active, scene: sceneID); await model.diagnosticIfRequested() }
+        .task { model.claim(sceneID); await model.active(scenePhase == .active, scene: sceneID) }
         .onChange(of: scenePhase) { _, phase in Task { await model.active(phase == .active, scene: sceneID) } }
     }
 }

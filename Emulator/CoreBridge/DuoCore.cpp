@@ -7,6 +7,8 @@
 #include <atomic>
 #include <cmath>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <new>
 #include <string>
 #include <vector>
@@ -32,6 +34,8 @@ std::atomic<DuoCore*> g_active{nullptr};
 
 struct DuoCore {
     std::string system_path, save_path, rom_path, error;
+    // Core sets need_fullpath=false and keeps retro_game_info; bytes must outlive the loaded game.
+    std::vector<uint8_t> rom_data;
     SPSCAudioRing audio;
     std::vector<uint8_t> frame = std::vector<uint8_t>(kFrameBytes);
     DuoInput input{};
@@ -199,7 +203,15 @@ bool duo_load(DuoCore* c, const char* rom_path) {
     if (!c || c != current() || !c->initialized || c->loaded || !rom_path) return false;
     c->error.clear(); c->shutdown = false; c->rom_path = rom_path;
     retro_game_info info{};
+    {
+        std::ifstream file(c->rom_path, std::ios::binary);
+        if (!file) { c->error = "Could not open the DS file"; return false; }
+        c->rom_data.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    }
+    if (c->rom_data.empty()) { c->error = "The DS file is empty"; return false; }
     info.path = c->rom_path.c_str();
+    info.data = c->rom_data.data();
+    info.size = c->rom_data.size();
     const bool loaded = retro_load_game(&info);
     c->loaded = loaded;
     if (!loaded || c->shutdown) {

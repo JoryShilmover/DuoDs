@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import AVFoundation
+import os
 import UniformTypeIdentifiers
 
 @MainActor final class AppModel: ObservableObject {
@@ -12,7 +13,11 @@ import UniformTypeIdentifiers
     let persistence: PersistenceStore
     @Published var games: [GameRecord] = []
     @Published var current: GameRecord?
-    @Published var message: String?
+    private static let log = Logger(subsystem: "org.duods.prototype", category: "app")
+    // Every user-visible message is also logged so agents can diagnose without screenshots.
+    @Published var message: String? {
+        didSet { if let message { Self.log.error("\(message, privacy: .public)"); record("message", detail: message) } }
+    }
     @Published var busy = false
     @Published var owner: UUID?
     private var foreground = false
@@ -50,6 +55,7 @@ import UniformTypeIdentifiers
         guard owner == scene else { return }
         foreground = active
         if !active { await pauseAndSave(reason: "scene-inactive") }
+        else { await diagnosticIfRequested() } // auto-launch only once foreground, so boot is not born paused
         // Require explicit Resume after interruption; never silently capture input.
     }
     func reload() { do { games = try library.list() } catch { message = "Library: \(error.localizedDescription)" } }
@@ -141,9 +147,19 @@ import UniformTypeIdentifiers
         await importROM(url)
         if let game = games.first(where: { $0.title == "duo-diagnostic" }) { await launch(game) }
     }
-    func record(_ event: String) {
+    func record(_ event: String, detail: String? = nil) {
         let s = session.stats
-        let fields: [String: Any] = ["event":event,"monotonic":ProcessInfo.processInfo.systemUptime,"phase":session.phase.rawValue,"frames":s.frames,"video_frames":s.video_frames,"audio_produced":s.audio_produced,"audio_consumed":s.audio_consumed,"audio_underruns":s.audio_underruns,"audio_overruns":s.audio_overruns,"core_fps":s.fps,"sample_rate":s.sample_rate,"thermal_state":ProcessInfo.processInfo.thermalState.rawValue,"session":"single-process-owner"]
+        var fields: [String: Any] = ["event":event,"monotonic":ProcessInfo.processInfo.systemUptime,"phase":session.phase.rawValue,"frames":s.frames,"video_frames":s.video_frames,"audio_produced":s.audio_produced,"audio_consumed":s.audio_consumed,"audio_underruns":s.audio_underruns,"audio_overruns":s.audio_overruns,"core_fps":s.fps,"sample_rate":s.sample_rate,"thermal_state":ProcessInfo.processInfo.thermalState.rawValue,"session":"single-process-owner"]
+        if let detail { fields["detail"] = detail }
+        if let frame = session.frame {
+            // Evidence that real pixels reached the app: count non-black pixels per DS screen.
+            var lit = [0, 0]
+            frame.pixels.withUnsafeBytes { raw in
+                let px = raw.bindMemory(to: UInt32.self)
+                for i in 0..<min(px.count, 256 * 384) where px[i] & 0x00FF_FFFF != 0 { lit[i < 256 * 192 ? 0 : 1] += 1 }
+            }
+            fields["frame_sequence"] = frame.sequence; fields["lit_top"] = lit[0]; fields["lit_lower"] = lit[1]
+        }
         guard var data = try? JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys]) else { return }
         data.append(10)
         if !FileManager.default.fileExists(atPath: eventURL.path) { FileManager.default.createFile(atPath: eventURL.path, contents: nil) }

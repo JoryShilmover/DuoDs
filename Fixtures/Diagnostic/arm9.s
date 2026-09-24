@@ -19,7 +19,7 @@ _start:
     str r1, [r0]
     ldr r2, =0x04001000
     str r1, [r2]
-    ldr r1, =0x4080
+    ldr r1, =0x4084 @ BG2CNT: 256x256 bitmap, bit2 = direct color (0x4080 is paletted -> black)
     strh r1, [r0, #12]
     strh r1, [r2, #12]
     mov r1, #256

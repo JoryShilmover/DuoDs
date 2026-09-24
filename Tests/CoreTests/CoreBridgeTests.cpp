@@ -5,8 +5,10 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <vector>
+#include <unistd.h>
 
 namespace {
 retro_environment_t env = nullptr;
@@ -31,6 +33,8 @@ void retro_init(void) { ++init_count; }
 void retro_deinit(void) { ++deinit_count; }
 bool retro_load_game(const retro_game_info* info) {
     assert(info && info->path && env);
+    // Core declares need_fullpath=false: host must supply the ROM bytes.
+    assert(info->data && info->size == 4 && std::memcmp(info->data, "NDS!", 4) == 0);
     const char* system = nullptr;
     assert(env(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, &system));
     assert(std::strcmp(system, "/system") == 0);
@@ -88,7 +92,12 @@ int main() {
 
     DuoCore* core = duo_create("/system", "/save");
     assert(core && !duo_create("/system", "/save"));
-    assert(duo_load(core, "/rom.nds"));
+    assert(!duo_load(core, "/nonexistent/rom.nds"));
+    char rom[] = "/tmp/duo-core-test-XXXXXX";
+    const int fd = mkstemp(rom);
+    assert(fd >= 0 && write(fd, "NDS!", 4) == 4 && close(fd) == 0);
+    assert(duo_load(core, rom));
+    std::remove(rom);
     DuoStats stats{};
     duo_stats(core, &stats);
     assert(std::abs(stats.fps - 59.8261) < 0.0001 && stats.sample_rate == 32768);
