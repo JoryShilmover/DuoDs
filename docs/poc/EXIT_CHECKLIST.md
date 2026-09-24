@@ -18,7 +18,7 @@ Legend: **[agent]** an agent can do it alone · **[you]** needs you (device, pla
 ## 2. Features that are missing or unverified
 | Item | State | Owner |
 |---|---|---|
-| Microphone input (V15): permission flow, core mic feed, safe fallback when denied | Not implemented | [agent] then [you] |
+| Microphone input (V15): permission flow, core mic feed, safe fallback when denied | Implemented; passes on simulator (granted and denied) | [you] device: deny → grant → revoke, and a game that uses the mic |
 | Manual save states (V20): save/restore with `user-01`; reject wrong-ROM, corrupt and old-version states | Done on simulator; confirm on device | [you] |
 | Physical controller (V17): connect, disconnect mid-game, no stuck buttons | Code exists; untested | [you] (needs a controller) |
 | Apple Pencil | Untested | [you] if you have one |

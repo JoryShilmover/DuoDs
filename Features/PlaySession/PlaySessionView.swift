@@ -34,6 +34,10 @@ public final class PlaySessionCanvas: UIView {
     public var onStylusSample: ((CGPoint, CGRect, TimeInterval) -> Void)? {
         didSet { inputSurface.onStylusSample = onStylusSample }
     }
+    /// Hold-to-talk Mic pill: true on press, false on release or cancellation.
+    public var onMicrophone: ((Bool) -> Void)? {
+        didSet { inputSurface.onMicrophone = onMicrophone }
+    }
     public var inputEpoch = 0 { didSet { if inputEpoch != oldValue { cancelInput() } } }
     public var layoutPreference: ScreenLayoutPreference = .automatic { didSet { lastEnvironment = nil; refreshGeometry() } }
     public var swapScreens = false { didSet { lastEnvironment = nil; refreshGeometry() } }
@@ -136,6 +140,7 @@ public struct PlaySessionView: UIViewRepresentable {
     public var onLidToggle: () -> Void
     public var onGeometry: (DisplayEnvironment, LayoutSolution) -> Void
     public var onStylusSample: (CGPoint, CGRect, TimeInterval) -> Void
+    public var onMicrophone: (Bool) -> Void
     /// Changes when the owner releases all input (pause, interruption); held touches/buttons are cancelled.
     public var inputEpoch: Int
 
@@ -144,7 +149,8 @@ public struct PlaySessionView: UIViewRepresentable {
                 onPause: @escaping () -> Void = {}, onLidToggle: @escaping () -> Void = {},
                 onGeometry: @escaping (DisplayEnvironment, LayoutSolution) -> Void = { _, _ in },
                 inputEpoch: Int = 0,
-                onStylusSample: @escaping (CGPoint, CGRect, TimeInterval) -> Void = { _, _, _ in }) {
+                onStylusSample: @escaping (CGPoint, CGRect, TimeInterval) -> Void = { _, _, _ in },
+                onMicrophone: @escaping (Bool) -> Void = { _ in }) {
         self.frame = frame
         self.preference = preference
         self.swapScreens = swapScreens
@@ -154,6 +160,7 @@ public struct PlaySessionView: UIViewRepresentable {
         self.onGeometry = onGeometry
         self.inputEpoch = inputEpoch
         self.onStylusSample = onStylusSample
+        self.onMicrophone = onMicrophone
     }
 
     public func makeUIView(context: Context) -> PlaySessionCanvas { PlaySessionCanvas(frame: .zero) }
@@ -165,6 +172,7 @@ public struct PlaySessionView: UIViewRepresentable {
         view.onGeometry = onGeometry
         view.inputEpoch = inputEpoch
         view.onStylusSample = onStylusSample
+        view.onMicrophone = onMicrophone
         view.layoutPreference = preference
         view.swapScreens = swapScreens
         view.update(frame: frame)
@@ -235,7 +243,8 @@ private final class TouchSurface: UIView {
     var onPause: (() -> Void)?
     var onLid: (() -> Void)?
     var onStylusSample: ((CGPoint, CGRect, TimeInterval) -> Void)?
-    private enum Contact { case stylus(UInt64), dpad(Set<DSButton>), face(DSButton?), button(DSButton), pause, lid }
+    var onMicrophone: ((Bool) -> Void)?
+    private enum Contact { case stylus(UInt64), dpad(Set<DSButton>), face(DSButton?), button(DSButton), pause, lid, mic }
     private var contacts: [ObjectIdentifier: Contact] = [:]
     private var nextID: UInt64 = 1
     private var lowerScreen = CGRect(x: 0, y: 0, width: 0, height: 0)
@@ -271,6 +280,7 @@ private final class TouchSurface: UIView {
         switch contact {
         case .stylus(let id): router?.endStylus(id: id)
         case .dpad, .face, .button: router?.setButtons([], source: source(key))
+        case .mic: onMicrophone?(false)
         case .pause, .lid: break
         }
     }
@@ -289,7 +299,7 @@ private final class TouchSurface: UIView {
         let before = contacts[key].map(buttons(of:)) ?? []
         contacts[key] = contact
         let now = buttons(of: contact)
-        if case .stylus = contact {} else if case .pause = contact {} else if case .lid = contact {} else {
+        if case .stylus = contact {} else if case .pause = contact {} else if case .lid = contact {} else if case .mic = contact {} else {
             router?.setButtons(now, source: source(key))
         }
         if !now.subtracting(before).isEmpty { haptics.impactOccurred() }
@@ -306,6 +316,7 @@ private final class TouchSurface: UIView {
                 case .button(let button): apply(.button(button), key: key)
                 case .pause: contacts[key] = .pause; haptics.impactOccurred()
                 case .lid: contacts[key] = .lid; haptics.impactOccurred()
+                case .mic: contacts[key] = .mic; haptics.impactOccurred(); onMicrophone?(true)
                 }
             } else if router?.beginStylus(id: nextID, at: point, lowerScreen: lowerScreen) == true {
                 contacts[key] = .stylus(nextID)
@@ -363,6 +374,7 @@ private final class TouchSurface: UIView {
         let held = contacts.values.reduce(into: Set<DSButton>()) { $0.formUnion(buttons(of: $1)) }
         let heldPause = contacts.values.contains { if case .pause = $0 { return true }; return false }
         let heldLid = contacts.values.contains { if case .lid = $0 { return true }; return false }
+        let heldMic = contacts.values.contains { if case .mic = $0 { return true }; return false }
         for item in layout.items {
             switch item.element {
             case .dpad: drawDPad(item.frame, held: held)
@@ -370,6 +382,7 @@ private final class TouchSurface: UIView {
             case .button(let button): drawPill(item.frame, title: item.title, pressed: held.contains(button))
             case .pause: drawPill(item.frame, title: item.title, pressed: heldPause)
             case .lid: drawPill(item.frame, title: item.title, pressed: heldLid)
+            case .mic: drawPill(item.frame, title: item.title, pressed: heldMic)
             }
         }
     }

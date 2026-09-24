@@ -111,6 +111,21 @@ int main() {
     const int fd = mkstemp(rom);
     assert(fd >= 0 && write(fd, "NDS!", 4) == 4 && close(fd) == 0);
     assert(duo_load(core, rom));
+    // Microphone: the core obtains the host mic interface; reads are silence-padded and only while active.
+    retro_microphone_interface mic{};
+    mic.interface_version = RETRO_MICROPHONE_INTERFACE_VERSION;
+    assert(env(RETRO_ENVIRONMENT_GET_MICROPHONE_INTERFACE, &mic));
+    retro_microphone_t* handle = mic.open_mic(nullptr);
+    int16_t heard[4] = {1, 1, 1, 1};
+    assert(handle && mic.read_mic(handle, heard, 4) == -1 && !mic.get_mic_state(handle));
+    assert(mic.set_mic_state(handle, true) && mic.get_mic_state(handle));
+    const int16_t spoken[2] = {100, -200};
+    duo_push_mic(core, spoken, 2);
+    assert(mic.read_mic(handle, heard, 4) == 4 && heard[0] == 100 && heard[1] == -200 && heard[2] == 0 && heard[3] == 0);
+    retro_microphone_params_t params{};
+    assert(mic.get_params(handle, &params) && params.rate == 44100);
+    mic.close_mic(handle);
+    assert(!mic.get_mic_state(handle));
     std::remove(rom);
     DuoStats stats{};
     duo_stats(core, &stats);

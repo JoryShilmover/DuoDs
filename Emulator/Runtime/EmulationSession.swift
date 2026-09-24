@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(AVFoundation)
+import AVFoundation
+#endif
 import Combine
 
 public enum RuntimeError: LocalizedError {
@@ -122,7 +125,14 @@ public enum RuntimeError: LocalizedError {
         worker.queue.async { worker.pendingTouch = uptime }
     }
 
+    /// Hold-to-talk DS microphone (core mic button L3 in "hold" mode). Capture runs only while held.
+    public func setMicrophone(held: Bool) {
+        let worker = worker
+        worker.queue.async { worker.setMicrophone(held: held) }
+    }
+
     public func releaseInputs() {
+        setMicrophone(held: false)
         setInput(DSInput())
         inputEpoch &+= 1
     }
@@ -173,7 +183,9 @@ private final class RuntimeWorker: @unchecked Sendable {
     private var lastAudioCheck: UInt64 = 0
     #if canImport(AVFoundation)
     private var audio: AudioTransport?
+    private var mic: MicCapture?
     #endif
+    private var micHeld = false
 
     func perform<T>(_ operation: @escaping () throws -> T) async throws -> T {
         try await withCheckedThrowingContinuation { continuation in
@@ -220,7 +232,25 @@ private final class RuntimeWorker: @unchecked Sendable {
         schedule(generation)
     }
 
+    func setMicrophone(held: Bool) {
+        guard held != micHeld else { return }
+        #if canImport(AVFoundation)
+        if held {
+            guard let core, running, AVAudioApplication.shared.recordPermission == .granted else { return }
+            // Output may have started before permission existed; switch the session to play-and-record.
+            if AVAudioSession.sharedInstance().category != .playAndRecord { restartAudio(core) }
+            let capture = MicCapture()
+            do { try capture.start(core: core); mic = capture } catch { return }
+        } else {
+            mic?.stop()
+            mic = nil
+        }
+        #endif
+        micHeld = held
+    }
+
     func pause() {
+        setMicrophone(held: false)
         running = false
         generation &+= 1
         input = DSInput()
@@ -280,7 +310,8 @@ private final class RuntimeWorker: @unchecked Sendable {
             #endif
         }
         audioBackedUpSince = 0
-        let native = DuoInput(buttons: input.buttons, touch_x: input.touchX,
+        let buttons = micHeld ? input.buttons | UInt16(1 << 14) : input.buttons // L3 = core mic button
+        let native = DuoInput(buttons: buttons, touch_x: input.touchX,
                               touch_y: input.touchY, touching: input.touching)
         if !duo_run(core, native) {
             let message = String(cString: duo_error(core))

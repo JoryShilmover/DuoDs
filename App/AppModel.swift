@@ -228,6 +228,14 @@ import UniformTypeIdentifiers
         let advanced = difference(savedFrame, advancedFrame), restored = difference(savedFrame, restoredFrame)
         record("states-roundtrip", detail: "load=\(loadOutcome.prefix(24)) diff_saved_vs_advanced=\(String(format: "%.2f", advanced)) diff_saved_vs_restored=\(String(format: "%.2f", restored)) restored_closer=\(restored >= 0 && restored < advanced)")
     }
+    /// `--selftest-mic` (V15): hold the Mic control for 2 s. `mic_pushed` counts captured samples,
+    /// `mic_consumed` samples the emulated DS read. With permission denied both stay 0 (silence).
+    func runMicSelfTest() async {
+        func wait(_ seconds: Double) async { try? await Task.sleep(nanoseconds: UInt64(seconds * 1e9)) }
+        await wait(2); record("mic-selftest-before")
+        await microphone(held: true); await wait(2); record("mic-selftest-held")
+        await microphone(held: false); await wait(1); record("mic-selftest-released")
+    }
     func diagnosticIfRequested() async {
         guard !automaticLaunchDone else { return }; automaticLaunchDone = true
         let arguments = ProcessInfo.processInfo.arguments
@@ -246,6 +254,27 @@ import UniformTypeIdentifiers
             await launch(game)
             if arguments.contains("--selftest") { await runSelfTest() }
             if arguments.contains("--selftest-states") { await runStateSelfTest() }
+            if arguments.contains("--selftest-mic") { await runMicSelfTest() }
+        }
+    }
+    /// V15: hold-to-talk. Permission is requested on first use (never at launch); if denied the game
+    /// hears silence and the user is told once where to enable it.
+    private var micDeniedNoticeShown = false
+    func microphone(held: Bool) async {
+        guard held else { session.setMicrophone(held: false); record("mic-release"); return }
+        switch AVAudioApplication.shared.recordPermission {
+        case .granted:
+            session.setMicrophone(held: true); record("mic-hold")
+        case .undetermined:
+            let granted = await AVAudioApplication.requestRecordPermission()
+            record("mic-permission", detail: granted ? "granted" : "denied")
+            if !granted { micDeniedNoticeShown = true; message = "Microphone access was not allowed. The game will hear silence; you can enable it in Settings → Privacy & Security → Microphone." }
+        default:
+            record("mic-denied")
+            if !micDeniedNoticeShown {
+                micDeniedNoticeShown = true
+                message = "Microphone access is off for Duo DS, so the game hears silence. Enable it in Settings → Privacy & Security → Microphone."
+            }
         }
     }
     /// V10: log the raw contact and its DS mapping, so accuracy can be recomputed independently,
@@ -264,7 +293,7 @@ import UniformTypeIdentifiers
     }
     func record(_ event: String, detail: String? = nil) {
         let s = session.stats
-        var fields: [String: Any] = ["event":event,"monotonic":ProcessInfo.processInfo.systemUptime,"phase":session.phase.rawValue,"frames":s.frames,"video_frames":s.video_frames,"audio_produced":s.audio_produced,"audio_consumed":s.audio_consumed,"audio_underruns":s.audio_underruns,"audio_overruns":s.audio_overruns,"audio_buffered_ms":s.sample_rate > 0 ? Int(Double(s.audio_buffered) * 1000 / s.sample_rate) : 0,"core_fps":s.fps,"sample_rate":s.sample_rate,"thermal_state":ProcessInfo.processInfo.thermalState.rawValue,"session":"single-process-owner"]
+        var fields: [String: Any] = ["event":event,"monotonic":ProcessInfo.processInfo.systemUptime,"phase":session.phase.rawValue,"frames":s.frames,"video_frames":s.video_frames,"audio_produced":s.audio_produced,"audio_consumed":s.audio_consumed,"audio_underruns":s.audio_underruns,"audio_overruns":s.audio_overruns,"mic_pushed":s.mic_pushed,"mic_consumed":s.mic_consumed,"audio_buffered_ms":s.sample_rate > 0 ? Int(Double(s.audio_buffered) * 1000 / s.sample_rate) : 0,"core_fps":s.fps,"sample_rate":s.sample_rate,"thermal_state":ProcessInfo.processInfo.thermalState.rawValue,"session":"single-process-owner"]
         if let detail { fields["detail"] = detail }
         // V12 conditions: battery, low power, brightness (thermal state above).
         let device = UIDevice.current

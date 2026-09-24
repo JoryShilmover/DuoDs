@@ -4,6 +4,7 @@
 #include <libretro.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstring>
@@ -26,7 +27,33 @@ constexpr const char* kOptions[][2] = {
     {"melonds_touch_mode", "touch"},
     {"melonds_show_cursor", "disabled"},
     {"melonds_threaded_renderer", "disabled"},
-    {"melonds_mic_input", "silence"}, // capture requires a separate permission/capture path
+    // Host microphone through the libretro mic interface below. Capture only happens while the user holds
+    // the on-screen Mic button (L3, "hold" mode); otherwise, or without permission, the core reads silence.
+    {"melonds_mic_input", "microphone"},
+    {"melonds_mic_input_active", "hold"},
+};
+constexpr unsigned kMicRate = 44100;
+
+// Lock-free mono int16 ring: producer is the host capture thread, consumer the core on the executor.
+struct MicRing {
+    static constexpr size_t capacity = 16384;
+    std::array<int16_t, capacity> samples{};
+    std::atomic<uint64_t> write{0}, read{0}, pushed{0}, consumed{0};
+    void push(const int16_t* data, size_t count) noexcept {
+        const uint64_t w = write.load(std::memory_order_relaxed), r = read.load(std::memory_order_acquire);
+        const size_t n = std::min(count, capacity - static_cast<size_t>(w - r));
+        for (size_t i = 0; i < n; ++i) samples[(w + i) % capacity] = data[i];
+        write.store(w + n, std::memory_order_release);
+        pushed.fetch_add(n, std::memory_order_relaxed);
+    }
+    size_t pop(int16_t* out, size_t count) noexcept {
+        const uint64_t r = read.load(std::memory_order_relaxed), w = write.load(std::memory_order_acquire);
+        const size_t n = std::min(count, static_cast<size_t>(w - r));
+        for (size_t i = 0; i < n; ++i) out[i] = samples[(r + i) % capacity];
+        read.store(r + n, std::memory_order_release);
+        consumed.fetch_add(n, std::memory_order_relaxed);
+        return n;
+    }
 };
 
 std::atomic<DuoCore*> g_active{nullptr};
@@ -38,6 +65,8 @@ struct DuoCore {
     // buffer is freed right after retro_load_game to avoid holding an extra full ROM in memory.
     std::vector<uint8_t> rom_data;
     SPSCAudioRing audio;
+    MicRing mic;
+    bool mic_open = false, mic_active = false;
     std::vector<uint8_t> frame = std::vector<uint8_t>(kFrameBytes);
     DuoInput input{};
     double fps = 0, sample_rate = 0;
@@ -61,6 +90,33 @@ void log_cb(enum retro_log_level level, const char* format, ...) {
     } else if (c->error.empty()) {
         c->error = format;
     }
+}
+
+// libretro microphone interface. The handle is a tag; the ring lives in the current DuoCore.
+retro_microphone_t* mic_handle() { static int tag; return reinterpret_cast<retro_microphone_t*>(&tag); }
+retro_microphone_t* RETRO_CALLCONV mic_open(const retro_microphone_params_t*) {
+    DuoCore* c = current();
+    if (!c) return nullptr;
+    c->mic_open = true; c->mic_active = false;
+    return mic_handle();
+}
+void RETRO_CALLCONV mic_close(retro_microphone_t*) { if (DuoCore* c = current()) { c->mic_open = false; c->mic_active = false; } }
+bool RETRO_CALLCONV mic_params(const retro_microphone_t* m, retro_microphone_params_t* params) {
+    if (!m || !params) return false;
+    params->rate = kMicRate; return true;
+}
+bool RETRO_CALLCONV mic_set_state(retro_microphone_t* m, bool on) {
+    DuoCore* c = current();
+    if (!c || !m || !c->mic_open) return false;
+    c->mic_active = on; return true;
+}
+bool RETRO_CALLCONV mic_get_state(const retro_microphone_t* m) { DuoCore* c = current(); return c && m && c->mic_active; }
+int RETRO_CALLCONV mic_read(retro_microphone_t* m, int16_t* samples, size_t count) {
+    DuoCore* c = current();
+    if (!c || !m || !samples || !c->mic_active) return -1;
+    const size_t got = c->mic.pop(samples, count);
+    std::fill(samples + got, samples + count, int16_t{0}); // missing capture (or denied permission) = silence
+    return static_cast<int>(count);
 }
 
 bool environment_cb(unsigned command, void* data) {
@@ -102,6 +158,13 @@ bool environment_cb(unsigned command, void* data) {
         case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
             if (!data) return false;
             *static_cast<bool*>(data) = false; return true;
+        case RETRO_ENVIRONMENT_GET_MICROPHONE_INTERFACE: {
+            auto* mic = static_cast<retro_microphone_interface*>(data);
+            if (!mic || mic->interface_version != RETRO_MICROPHONE_INTERFACE_VERSION) return false;
+            mic->open_mic = mic_open; mic->close_mic = mic_close; mic->get_params = mic_params;
+            mic->set_mic_state = mic_set_state; mic->get_mic_state = mic_get_state; mic->read_mic = mic_read;
+            return true;
+        }
         case RETRO_ENVIRONMENT_GET_INPUT_BITMASKS:
             return true;
         case RETRO_ENVIRONMENT_GET_LOG_INTERFACE:
@@ -263,6 +326,9 @@ size_t duo_read_audio(DuoCore* c, float* stereo, size_t frames) {
     return c->audio.pop(stereo, frames);
 }
 void duo_clear_audio(DuoCore* c) { if (c) c->audio.clear(); }
+void duo_push_mic(DuoCore* c, const int16_t* samples, size_t count) {
+    if (c && c == current() && samples) c->mic.push(samples, count);
+}
 size_t duo_audio_buffered(DuoCore* c) { return c && c == current() ? c->audio.buffered() : 0; }
 void duo_stats(DuoCore* c, DuoStats* stats) {
     if (!stats) return;
@@ -271,7 +337,7 @@ void duo_stats(DuoCore* c, DuoStats* stats) {
     stats->fps = c->fps; stats->sample_rate = c->sample_rate;
     stats->frames = c->frames; stats->video_frames = c->video_frames;
     stats->audio_produced = c->audio.produced(); stats->audio_consumed = c->audio.consumed();
-    stats->audio_underruns = c->audio.underruns(); stats->audio_overruns = c->audio.overruns(); stats->audio_buffered = c->audio.buffered();
+    stats->audio_underruns = c->audio.underruns(); stats->audio_overruns = c->audio.overruns(); stats->audio_buffered = c->audio.buffered(); stats->mic_pushed = c->mic.pushed.load(); stats->mic_consumed = c->mic.consumed.load();
 }
 size_t duo_save_size(DuoCore* c) { return c && c->loaded ? retro_get_memory_size(RETRO_MEMORY_SAVE_RAM) : 0; }
 bool duo_copy_save(DuoCore* c, void* bytes, size_t size) {

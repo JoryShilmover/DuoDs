@@ -2,11 +2,11 @@ import Foundation
 import CoreGraphics
 
 /// DS Lite–style on-screen controls placed inside the two thumb clusters chosen by ScreenLayoutSolver.
-/// Left cluster: L shoulder (top, outer edge), D-pad, Lid/Pause pills.
+/// Left cluster: L shoulder (top, outer edge), D-pad, Mic/Lid/Pause pills.
 /// Right cluster: R shoulder (top, outer edge), X/Y/A/B diamond, Start/Select pills.
 /// Pills go in an inner column when the cluster is wide, otherwise in a row underneath.
 public struct ControlLayout: Equatable {
-    public enum Element: Equatable { case button(DSButton), dpad, face, pause, lid }
+    public enum Element: Equatable { case button(DSButton), dpad, face, pause, lid, mic }
     public enum Shape: Equatable { case pill, dpad, diamond }
     public struct Item: Equatable {
         public let element: Element
@@ -83,15 +83,16 @@ public struct ControlLayout: Equatable {
                     frame = CGRect(x: x, y: c.maxY - CGFloat(entries.count - index) * (Self.pillHeight + Self.spacing) + Self.spacing,
                                    width: pillWidth, height: Self.pillHeight)
                 } else {
-                    let width = min(pillWidth, (c.width - Self.spacing) / 2)
-                    let total = width * 2 + Self.spacing
+                    let count = CGFloat(entries.count)
+                    let width = min(pillWidth, (c.width - Self.spacing * (count - 1)) / count)
+                    let total = width * count + Self.spacing * (count - 1)
                     frame = CGRect(x: c.midX - total / 2 + CGFloat(index) * (width + Self.spacing),
                                    y: c.maxY - Self.pillHeight, width: width, height: Self.pillHeight)
                 }
                 items.append(Item(element: entry.0, title: entry.1, shape: .pill, frame: frame, hitFrame: frame))
             }
         }
-        pills(l, [(.lid, "Lid"), (.pause, "Pause")], innerOnRight: true)
+        pills(l, [(.mic, "Mic"), (.lid, "Lid"), (.pause, "Pause")], innerOnRight: true)
         pills(r, [(.button(.start), "Start"), (.button(.select), "Select")], innerOnRight: false)
 
         self.items = items

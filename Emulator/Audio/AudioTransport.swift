@@ -42,9 +42,15 @@ final class AudioTransport {
         engine.connect(source, to: engine.mainMixerNode, format: format)
     }
 
+    /// Play-and-record only once the user has granted microphone access; otherwise plain playback.
     func start() throws {
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+        if AVAudioApplication.shared.recordPermission == .granted {
+            try session.setCategory(.playAndRecord, mode: .default,
+                                    options: [.mixWithOthers, .defaultToSpeaker, .allowBluetoothA2DP])
+        } else {
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+        }
         try session.setActive(true)
         try engine.start()
     }
