@@ -19,12 +19,11 @@ Legend: **[agent]** an agent can do it alone · **[you]** needs you (device, pla
 | Item | State | Owner |
 |---|---|---|
 | Microphone input (V15): permission flow, core mic feed, safe fallback when denied | Not implemented | [agent] then [you] |
-| Manual save states (V20): save/restore with `user-01`; reject wrong-ROM, corrupt and old-version states | UI and storage exist; round trip not exercised | [agent] + [you] |
+| Manual save states (V20): save/restore with `user-01`; reject wrong-ROM, corrupt and old-version states | Done on simulator; confirm on device | [you] |
 | Physical controller (V17): connect, disconnect mid-game, no stuck buttons | Code exists; untested | [you] (needs a controller) |
 | Apple Pencil | Untested | [you] if you have one |
 | Emulated lid (V16): visible in-game effect | Wired and unit-tested; not observed in a game | [you] |
-| Scene ownership: release `owner` when a scene disconnects, so a new window isn't locked out | Open review finding | [agent] |
-| Battery flush after a runtime core failure (≤10 s of saves at risk) | Open, S3 | [agent] |
+| Scene ownership release and battery flush after core failure | Done (`8e08fd9`) | — |
 | Homebrew SD (DLDI) save durability | Unknown | [agent] |
 | Presentation metrics (unique/duplicate/dropped frames) for V09 | Not instrumented | [agent] |
 | Touch accuracy and latency instrumentation for V10 (≤1 DS px, p95 ≤100 ms) | Not instrumented | [agent] |

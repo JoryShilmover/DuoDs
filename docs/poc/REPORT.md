@@ -42,7 +42,7 @@ Raw evidence is local only, under ignored `artifacts/poc/2026-09-23-resume/`: `l
 | V17 | Not run | No controller used | — |
 | V18 | Not run | Informal play on the simulator only — see UI note below | — |
 | V19 | Not run | See G4 | — |
-| V20 | Not run | `user-01` supports serialization; manual save/restore state not yet exercised | — |
+| V20 | Pass (simulator) | `user-01` round trip restores the saved frame (diff 0.56 vs 2.18 advanced, 2/2); homebrew fixture also serializes; cartridge save payload unchanged; rejection cases unit-tested. Device validation pending | `states-events.jsonl` |
 
 ## Open defects and backlog
 
@@ -50,8 +50,7 @@ Raw evidence is local only, under ignored `artifacts/poc/2026-09-23-resume/`: `l
 |---|---|
 | Fixed | Audio lead/drift/stall (D16): 0 underruns on device over boot, resume, relaunch and 70 s (diagnostic). V11 30-minute capture on the target device still required |
 | S3 | UI/control overhaul: first DS Lite–style pass done (D15). Remaining: user-adjustable placement/size, opacity, left-handed option, V18 hands-on trial |
-| S2 (unverified) | Scene `owner` is never released on scene disconnect, so a new scene may be locked out |
-| S3 | Battery flush is skipped after a runtime core failure (≤10 s of cartridge writes lost) |
+| Fixed | Scene ownership released on disconnect, with a "Move game here" handoff; battery flush after core failure |
 | S3 | Transient geometry with stale reserved regions lasts about 1 frame during transitions |
 | Decision | App license and GPLv3 corresponding-source offer before any distribution |
 

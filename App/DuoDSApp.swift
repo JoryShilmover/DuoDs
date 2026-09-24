@@ -62,7 +62,7 @@ struct RootView: View {
                         }
                         Section("Prototype") {
                             Text("Interpreter · native software rendering · Metal presentation")
-                            Text("Microphone input is not yet available. Homebrew manual save states are unsupported by the core.").font(.caption).foregroundStyle(.secondary)
+                            Text("Manual save states are saved per game and tied to this emulator version. In-game saves are stored separately.").font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 }

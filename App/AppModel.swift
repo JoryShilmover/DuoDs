@@ -76,7 +76,7 @@ import UniformTypeIdentifiers
     }
     func reload() { do { games = try library.list() } catch { message = "Library: \(error.localizedDescription)" } }
     func importROM(_ url: URL) async {
-        guard !busy else { return }
+        guard !busy else { record("import-skipped", detail: "busy"); return }
         busy = true; defer { busy = false }
         do {
             let store = library
@@ -85,7 +85,7 @@ import UniformTypeIdentifiers
         } catch { message = "Import failed: \(error.localizedDescription)" }
     }
     func launch(_ game: GameRecord) async {
-        guard !busy else { return }
+        guard !busy else { record("launch-skipped", detail: "busy"); return }
         busy = true; defer { busy = false }
         do {
             if current?.id == game.id, session.phase == .paused {
@@ -186,13 +186,60 @@ import UniformTypeIdentifiers
         await launch(game); await wait(2); record("selftest-relaunched")
         record("selftest-done")
     }
+    /// `--selftest-states` (V20): save a manual state, let the game run, restore, and compare frames.
+    /// A real restore makes the post-restore frame much closer to the saved frame than the advanced one.
+    /// On content without serialization support it records the explicit "unavailable" outcome instead.
+    func runStateSelfTest() async {
+        func wait(_ seconds: Double) async { try? await Task.sleep(nanoseconds: UInt64(seconds * 1e9)) }
+        func difference(_ a: Data?, _ b: Data?) -> Double {
+            guard let a, let b, a.count == b.count, !a.isEmpty else { return -1 }
+            var total = 0, samples = 0
+            a.withUnsafeBytes { x in b.withUnsafeBytes { y in
+                // Odd stride so B, G, R and A all get sampled (a stride of 16 only ever read blue).
+                for i in stride(from: 0, to: a.count, by: 7) { total += abs(Int(x[i]) - Int(y[i])); samples += 1 }
+            } }
+            return Double(total) / Double(max(samples, 1))
+        }
+        guard current != nil else { record("states-abort", detail: "no game"); return }
+        await wait(4)
+        let savedFrame = session.frame?.pixels
+        message = nil
+        await state(save: true)
+        let saveOutcome = message ?? ""
+        message = nil
+        guard saveOutcome.hasPrefix("Manual state saved") else {
+            record("states-unavailable", detail: saveOutcome)
+            await resume(); return
+        }
+        record("states-saved")
+        await resume(); await wait(3)
+        let advancedFrame = session.frame?.pixels
+        await state(save: false)
+        let loadOutcome = message ?? ""
+        message = nil
+        await resume(); await wait(0.25)
+        let restoredFrame = session.frame?.pixels
+        let advanced = difference(savedFrame, advancedFrame), restored = difference(savedFrame, restoredFrame)
+        record("states-roundtrip", detail: "load=\(loadOutcome.prefix(24)) diff_saved_vs_advanced=\(String(format: "%.2f", advanced)) diff_saved_vs_restored=\(String(format: "%.2f", restored)) restored_closer=\(restored >= 0 && restored < advanced)")
+    }
     func diagnosticIfRequested() async {
         guard !automaticLaunchDone else { return }; automaticLaunchDone = true
-        guard ProcessInfo.processInfo.arguments.contains("--diagnostic"), let url = Bundle.main.url(forResource: "duo-diagnostic", withExtension: "nds") else { return }
+        let arguments = ProcessInfo.processInfo.arguments
+        record("auto-launch", detail: arguments.dropFirst().joined(separator: " "))
+        // `--launch-game <id prefix>`: open an already-imported library game (content never leaves the device).
+        if let index = arguments.firstIndex(of: "--launch-game"), index + 1 < arguments.count,
+           let game = games.first(where: { $0.id.hasPrefix(arguments[index + 1]) }) {
+            await launch(game)
+            if arguments.contains("--selftest-states") { await runStateSelfTest() }
+            return
+        }
+        if arguments.contains("--launch-game") { record("auto-launch-failed", detail: "no library game matches"); return }
+        guard arguments.contains("--diagnostic"), let url = Bundle.main.url(forResource: "duo-diagnostic", withExtension: "nds") else { return }
         await importROM(url)
         if let game = games.first(where: { $0.title == "duo-diagnostic" }) {
             await launch(game)
-            if ProcessInfo.processInfo.arguments.contains("--selftest") { await runSelfTest() }
+            if arguments.contains("--selftest") { await runSelfTest() }
+            if arguments.contains("--selftest-states") { await runStateSelfTest() }
         }
     }
     func recordGeometry(_ environment: DisplayEnvironment, _ solution: LayoutSolution) {
