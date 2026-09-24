@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jory Shilmover
 """Retrieve exact source revisions. Never overwrite a different/dirty checkout."""
 import json, subprocess
 from pathlib import Path

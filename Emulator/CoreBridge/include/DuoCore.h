@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Jory Shilmover
 #ifndef DUO_CORE_H
 #define DUO_CORE_H
 #include <stdbool.h>

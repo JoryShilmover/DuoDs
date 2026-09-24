@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Jory Shilmover
 import Foundation
 
 public enum DSButton: Int, CaseIterable, Sendable {

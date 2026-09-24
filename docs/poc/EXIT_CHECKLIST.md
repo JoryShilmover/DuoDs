@@ -49,7 +49,8 @@ V07/V08 30-minute 2D and 3D runs, V09 presentation cadence, V10 touch accuracy a
 - [x] **[agent]** Per-run `manifest.json`, metrics and report: `scripts/collect-evidence.py`.
 
 ## 7. Decisions before anything leaves your devices
-- [ ] **[decide]** License for the app's own code. It links GPLv3 code, so it needs a GPL-compatible license and a corresponding-source offer before any distribution.
+- [x] **[decide]** License: GPL-3.0-or-later for the app's own code; the source offer is the public repository at the build's commit (D19).
+- [ ] **[decide]** Accept the development-signed G1 build as release-like, or rerun G1 with distribution signing (paid account).
 - [ ] **[decide]** Distribution path: free team (7-day installs, personal only), TestFlight/paid account, or App Store. Check the current App Store rules for emulators at that time.
 - [ ] **[decide]** BIOS/firmware policy. Today it uses the core's built-in FreeBIOS only. Some games may need real firmware, which users would have to supply themselves.
 - [ ] **[decide]** Scope option A or B above.

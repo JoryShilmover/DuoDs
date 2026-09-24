@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jory Shilmover
 set -euo pipefail
 cd "$(dirname "$0")/.."
 python3 -m venv build/tools

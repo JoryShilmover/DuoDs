@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jory Shilmover
 """Build an original homebrew diagnostic with Apple clang's ARM assembler.
 Extracts relocation-free ELF .text; does not require a downloaded ROM/SDK.
 """

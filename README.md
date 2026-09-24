@@ -12,4 +12,6 @@ Execution handoff for a native iOS Nintendo DS emulator that uses the folding in
 | [Research and preflight](docs/poc/RESEARCH.md) | Sources, evidence confidence, local environment, and assumptions to recheck |
 | [Handoff prompt](docs/poc/HANDOFF.md) | Copy-ready instructions for the execution orchestrator |
 
+License: GPL-3.0-or-later ([LICENSE](LICENSE)), the same as the bundled melonDS core. Third-party notices are in `Dependencies/Notices/` and `Dependencies/CORE-NOTICES.txt`; the diagnostic fixture is MIT (`Fixtures/Diagnostic/LICENSE`).
+
 Planning baseline: September 23, 2026. Product details and beta SDK APIs must be rechecked at execution time. The intended first result is a reproducible prototype and an evidence-backed go/no-go decision, not an App Store release.

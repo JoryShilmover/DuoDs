@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jory Shilmover
 import argparse, json, os, subprocess, sys
 from pathlib import Path
 root=Path(__file__).resolve().parent.parent

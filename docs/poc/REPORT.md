@@ -19,7 +19,7 @@ Raw evidence is local only, under ignored `artifacts/poc/`: `2026-09-23-resume/`
 
 | Gate | Status | Evidence | Blocker / defect |
 |---|---|---|---|
-| G0 — toolchain, source, rights | **Partial** | Pinned sources and license notices (`Dependencies/`); fresh-clone rebuild; signed device build with entitlement dump (no JIT entitlement) and 0 JIT symbols | App license and GPLv3 source offer undecided (user decision) |
+| G0 — toolchain, source, rights | **Pass** | Pinned sources and license notices (`Dependencies/`); fresh-clone rebuild; signed device build with entitlement dump (no JIT entitlement) and 0 JIT symbols; app licensed GPL-3.0-or-later with a documented source offer (D19) | App Store/GPL question belongs to the distribution decision, not the POC |
 | G1 — no-JIT spike on physical iPhone | **Pass, with a signing caveat** | iPhone 15 Pro Max, iOS 27.0, Release configuration: no JIT entitlement or symbols; `--selftest` passes; `user-01` 11.3 min at 100.0% of core target, 0 audio underruns; 204 stylus taps mapped within 1 DS px; in-game save survived close and relaunch (user-observed) | Development signing (`get-task-allow`), not distribution-signed. The authored 2D fixture was used for the selftest; gameplay, save and stylus used `user-01` |
 | G2 — Duo layout and lifecycle (simulator) | **Partial** | Fold trials: flat, half-fold (landscape + portrait), closed→outer, rotations; one session throughout; layouts avoid hinge; DS Lite–style controls in every pose; V20 save states pass | Not 20 changes per route (V04); held stylus through fold (V05) and multi-scene (V06) not run |
 | G3 — physical Duo | **Blocked** | — | No physical Duo |
@@ -58,15 +58,15 @@ Raw evidence is local only, under ignored `artifacts/poc/`: `2026-09-23-resume/`
 | Fixed | Scene ownership released on disconnect, with a "Move game here" handoff; battery flush after core failure |
 | Fixed (confirmed on device) | S2: the in-game ⋯ menu opened but its items ignored taps (device playtest 2026-09-24). Cause: `RootView` observed `EmulationSession`, which publishes every frame, so the toolbar Menu was rebuilt at 60 Hz while open. The per-frame view now lives in `PlayArea`; the root no longer observes the session |
 | S3 | Transient geometry with stale reserved regions lasts about 1 frame during transitions |
-| Decision | App license and GPLv3 corresponding-source offer before any distribution |
+| Decided | App license GPL-3.0-or-later; source offer = public repository at the build's commit (D19) |
 
 ## Decision
 
-**Assessment pending, now blocked only on G0.** G1 has device evidence (2026-09-24): `user-01` held 100% of core target for 11.3 minutes on an iPhone 15 Pro Max with no JIT, no audio underruns, accurate stylus mapping and a working in-game save. No decisive failure has been found. CONDITIONAL GO needs G0 to pass, and G0 is still partial until the app license and GPLv3 source offer are decided. The G1 build was development-signed, not distribution-signed. None of this is Duo evidence.
+**Assessment pending, one open question.** G0 passes (license decided, D19). G1 has device evidence (2026-09-24): `user-01` held 100% of core target for 11.3 minutes on an iPhone 15 Pro Max with no JIT, no audio underruns, accurate stylus mapping and a working in-game save. No S0/S1 is open. The evidence meets CONDITIONAL GO except for one rule: VALIDATION.md asks for release-like entitlements, and the G1 build carries `get-task-allow` (free-team development signing). Either the user accepts this deviation in DECISIONS.md (the build is Release-configured with no JIT entitlement), or G1 is rerun with distribution signing, which needs a paid developer account. None of this is Duo evidence.
 
 Next actions, in order:
 1. V15 (mic permission) and V10 corner taps on the iPhone; a landscape stretch.
-2. Decide the app license and GPLv3 source offer (unblocks G0 and therefore CONDITIONAL GO).
+2. Accept the development-signing deviation or rerun G1 distribution-signed (settles CONDITIONAL GO).
 3. Decide scope option A/B (EXIT_CHECKLIST.md); under B, 30-minute 2D/3D runs (V07/V08/V11/V12) on the iPhone.
 4. Complete V04–V06 on the simulator (20× per route, held stylus through fold, multi-scene).
 5. V18 hands-on trial per pose; landscape iPhone check.

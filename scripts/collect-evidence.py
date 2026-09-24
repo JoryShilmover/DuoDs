@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jory Shilmover
 """Collect a POC evidence run: pull the app's session-events.jsonl from a physical device or a
 simulator, write artifacts/poc/<run-id>/{manifest.json, logs/, metrics/summary.json, report.md}.
 

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Jory Shilmover
 """Deterministic minimal Xcode project; root owns this generator and project."""
 from pathlib import Path
 import hashlib, sys
