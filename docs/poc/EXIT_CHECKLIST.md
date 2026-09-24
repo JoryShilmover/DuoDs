@@ -55,5 +55,37 @@ V07/V08 30-minute 2D and 3D runs, V09 presentation cadence, V10 touch accuracy a
 - [ ] **[decide]** BIOS/firmware policy. Today it uses the core's built-in FreeBIOS only. Some games may need real firmware, which users would have to supply themselves.
 - [ ] **[decide]** Scope option A or B above.
 
-## After the POC (product work, not POC exit criteria)
-Broader game compatibility testing, older supported iPhones (the minimum is iOS 17), 3D-heavy performance tuning, settings UI, cloud sync, and polish. See the "Explicitly deferred" list in EXECUTION_PLAN.md.
+## Release roadmap (product work, not POC exit criteria)
+Added 2026-09-24. Items are ordered by priority within each tier; the suggested build order is Tier 1 top to bottom. Everything in Tiers 1–2 can be built and tested on the iPhone; Tier 3 needs Duo hardware to validate. Some items were deferred in EXECUTION_PLAN.md; they are listed here as post-POC work.
+
+### Tier 1: needed for a credible release
+- [ ] **Save backup export/import.** Export and import in-game saves and states (per game or all) through the Files app. Today saves live only in the app's own storage.
+- [ ] **Library icons and titles.** Read the icon and title stored in each game file (its banner) and show them in the library instead of filenames.
+- [ ] **Multiple save-state slots and an automatic state on exit.** Several manual slots with thumbnails and timestamps, plus an automatic state when leaving a game; resume from it on launch.
+- [ ] **Fast-forward.** Hold or toggle, 2×/4×; decide how audio behaves (skip or pitch up) while it's on.
+- [ ] **3D performance headroom.** Try the core's threaded renderer (`melonds_threaded_renderer`, currently off), then a 30-minute 3D run (V08-style) on the iPhone and the oldest supported iPhone (iOS 17).
+- [ ] **Settings screen.** Volume and mute, haptics on/off, and the DS user settings some games read (nickname, language, birthday), alongside the existing control settings.
+- [ ] **First-run help.** An empty-library screen that explains how to add your own games, with no ROM or download links.
+
+### Tier 2: expected by experienced users
+- [ ] Controller button remapping (after V17 verifies controller basics).
+- [ ] Drag to place on-screen controls; per-game control layouts.
+- [ ] Screen options: gap between screens, integer scaling vs. fill, smoothing filter.
+- [ ] Screenshot of both screens to Photos.
+- [ ] Import `.zip`/`.7z` archives and games shared from other apps.
+- [ ] Cheat codes (Action Replay), if the pinned core supports them.
+- [ ] Open a game from Shortcuts or a Home-screen icon.
+
+### Tier 3: things that set it apart on the Duo
+- [ ] Fold-aware layouts that feel like a real DS: half-folded with the top screen above the hinge and controls below.
+- [ ] Optional physical lid: closing the Duo sends the in-game lid event (the POC deliberately left this out).
+- [ ] Outer-screen play: a single-screen mode with a quick screen swap for playing while folded.
+
+### Deferred until after launch
+Cloud sync, rewind, higher internal resolution and shaders, local wireless or online multiplayer, DSi support, achievements. Measure the CPU cost of rewind and higher resolution without JIT before committing to them.
+
+### Needed before release (not features)
+- [ ] Distribution path: App Store vs. AltStore or other EU alternative marketplaces; resolve how the App Store's terms sit with the GPL (D19).
+- [ ] Firmware/BIOS policy: built-in FreeBIOS by default; decide whether users may supply their own firmware for games that need it.
+- [ ] Privacy manifest and privacy policy (currently no data collected), crash reporting decision, and a support contact.
+- [ ] Broader game compatibility testing and a known-issues list.
