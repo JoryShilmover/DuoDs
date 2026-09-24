@@ -60,6 +60,7 @@ P0–P4 as above. Run ended (usage limit) ~17:42 local while root was rebuilding
 - V15 microphone (D17): simulator `--selftest-mic` with permission granted: 83,706 samples captured and 82,715 read by the core in 2 s, 0 audio underruns across the category switch. With permission revoked: `mic-denied`, one message, 0 samples, emulation unaffected. Evidence: `artifacts/poc/2026-09-23-resume/logs/mic-events.jsonl` (local). Device check: deny → grant → revoke in Settings (V15).
 - Control settings: in-game menu → Controls… (size Small/Medium/Large = 0.75/0.88/1.0, opacity 20–100%, left-handed swap). Stored per device in UserDefaults (`controls.*`). `ControlLayout(scale:leftHanded:)` unit-tested (22 tests). Screenshot: `artifacts/poc/2026-09-23-ui/iphone-lefthanded-small.png`.
 - Homebrew SD durability (D18): the SD card was disabled; now enabled as an image-only store, flushed at checkpoints and pause. Simulator: the fixture boots and runs with the image created (737 KB on disk). End-to-end write → kill → reload is NOT verified: no lawful homebrew fixture that writes to SD is available.
+- Evidence tooling: `scripts/collect-evidence.py` implements the VALIDATION.md run directory (manifest + metrics + report). Every event now carries `game` (content SHA-256 prefix, never the title). Checked against the earlier device log: 100.0% mean speed, 0.9995 worst 10 s window, 0 underruns.
 
 ## Backlog (user requests)
 - ~~UI and on-screen button overhaul~~ — first pass done (D15), see session log. Size/opacity/left-handed done. Remaining: free-form repositioning (drag to place), landscape iPhone check on device, V18 hands-on trial.
@@ -71,5 +72,6 @@ P0–P4 as above. Run ended (usage limit) ~17:42 local while root was rebuilding
 3b. Simulator run: `xcrun simctl install booted build/DerivedData/Build/Products/Debug-iphonesimulator/DuoDS.app && xcrun simctl launch --console-pty booted org.duods.prototype --diagnostic`.
 4. Scripted checks: add `--selftest` after `--diagnostic`; wait ~20 s, then read `selftest-*` events.
 5. Remaining work: `docs/poc/EXIT_CHECKLIST.md`.
+5a. Evidence: `scripts/collect-evidence.py --device <UDID> --operator <name>` (or `--simulator <UDID>`, or `--events <file>`) writes `artifacts/poc/<run-id>/` with manifest.json, metrics/summary.json and report.md (speed windows, presentation ratio, touch accuracy/latency, audio, thermal/battery per session).
 5b. Session events: `<app data container>/Library/Application Support/DuoDS/session-events.jsonl`.
 6. Read the latest entry in this log and `DECISIONS.md` before changing anything.

@@ -1,6 +1,6 @@
 # Exit checklist: from proof of concept to product work
 
-Status as of 2026-09-23, commit `df1b7ad`. Criteria and case IDs (V01–V20, G0–G4) come from [VALIDATION.md](VALIDATION.md). Current evidence is in [REPORT.md](REPORT.md).
+Status as of 2026-09-23 (updated through the agent-only tasks). Criteria and case IDs (V01–V20, G0–G4) come from [VALIDATION.md](VALIDATION.md). Current evidence is in [REPORT.md](REPORT.md).
 
 The plan's **GO** requires G0–G4 to pass, including a physical Duo (G3). The Duo is not released, so the POC cannot reach GO on the original scope yet. Two ways forward:
 
@@ -45,7 +45,7 @@ V07/V08 30-minute 2D and 3D runs, V09 presentation cadence, V10 touch accuracy a
 
 ## 6. Reproducibility and handoff (G4)
 - [ ] **[you or another person]** V19: an independent operator follows the README/WORK_LOG steps from a fresh clone and repeats V02 plus one Duo pose. The same-machine fresh clone already builds.
-- [ ] **[agent]** Per-run `manifest.json` in each `artifacts/poc/<run-id>/`, as VALIDATION.md specifies.
+- [x] **[agent]** Per-run `manifest.json`, metrics and report: `scripts/collect-evidence.py`.
 
 ## 7. Decisions before anything leaves your devices
 - [ ] **[decide]** License for the app's own code. It links GPLv3 code, so it needs a GPL-compatible license and a corresponding-source offer before any distribution.
