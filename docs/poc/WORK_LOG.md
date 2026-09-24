@@ -63,5 +63,6 @@ P0–P4 as above. Run ended (usage limit) ~17:42 local while root was rebuilding
 3. Device build: `scripts/build-poc.sh --sdk iphoneos --team 9TZU9LRJV9 --configuration Release --diagnostic --destination id=<device UDID>` (a specific destination lets Xcode register the device with the free team); install: `xcrun devicectl device install app --device <UDID> build/DerivedData/Build/Products/Release-iphoneos/DuoDS.app`. First launch requires trusting the developer in Settings → General → VPN & Device Management.
 3b. Simulator run: `xcrun simctl install booted build/DerivedData/Build/Products/Debug-iphonesimulator/DuoDS.app && xcrun simctl launch --console-pty booted org.duods.prototype --diagnostic`.
 4. Scripted checks: add `--selftest` after `--diagnostic`; wait ~20 s, then read `selftest-*` events.
-5. Session events: `<app data container>/Library/Application Support/DuoDS/session-events.jsonl`.
+5. Remaining work: `docs/poc/EXIT_CHECKLIST.md`.
+5b. Session events: `<app data container>/Library/Application Support/DuoDS/session-events.jsonl`.
 6. Read the latest entry in this log and `DECISIONS.md` before changing anything.
