@@ -50,6 +50,7 @@ P0–P4 as above. Run ended (usage limit) ~17:42 local while root was rebuilding
 - Device build (D14): signed Release app built and installed on the iPhone 15 Pro Max; evidence in `artifacts/poc/2026-09-23-device/logs/` (entitlements, binary SHA-256 `13f3cf80…cadd`, build log). `get-task-allow=true` (development signing) — not a distribution-signed binary.
 - App Documents is now exposed in Files/Finder (`UIFileSharingEnabled` via `App/Info.plist`, `LSSupportsOpeningDocumentsInPlace`). `user-01` copied to the phone's app Documents with `devicectl device copy to`; the user imports it through Files → On My iPhone → DuoDS.
 - Device selftest evidence: `artifacts/poc/2026-09-23-device/logs/selftest-device.jsonl` (local).
+- Device play log (`artifacts/poc/2026-09-23-device/logs/play-device.jsonl`, local): `user-01` on iPhone 15 Pro Max booted and ran ~32 s logged at 59.8 fps in both full 10 s windows (100% of core target, emulated frames; presentation cadence not measured), 7 underruns mostly at boot, thermal nominal; then scene-inactive + audio interruption paused it correctly. User report: "ran decent". No device save round trip in the log. Not a V03 5-minute trace.
 
 ## Backlog (user requests)
 - **UI and on-screen button overhaul** (2026-09-23): the current 7×2 grid is a placeholder. Redesign the controls' layout and placement for each pose (flat, half-fold, outer, portrait), with thumb reach, a DS-like D-pad and face buttons, and user-adjustable placement. Track as S2 in REPORT.md; ties into the V18 ergonomics trial.
