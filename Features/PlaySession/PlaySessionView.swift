@@ -223,7 +223,8 @@ private final class TouchSurface: UIView {
             ("L", .button(.l)), ("R", .button(.r)), ("Sel", .button(.select)), ("Start", .button(.start)),
             ("Ⅱ", .pause), ("Lid", .lid)
         ]
-        guard let area = solution.controlRegions.first(where: { $0.width >= 150 && $0.height >= 48 })
+        // Prefer the lowest usable band (thumb reach); e.g. outer landscape has equal bands above and below.
+        guard let area = solution.controlRegions.filter({ $0.width >= 150 && $0.height >= 48 }).max(by: { $0.maxY < $1.maxY })
             ?? solution.controlRegions.first else { return }
         let columns = 7, rows = 2
         let width = min(area.width / CGFloat(columns), 52)

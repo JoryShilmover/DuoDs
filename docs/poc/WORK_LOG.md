@@ -10,7 +10,7 @@ Starting revision: `e2558fe` on `main`, clean tracked working tree; origin and b
 | P3 | passed (synthetic) | layout_input | 6 layout/input tests pass; display adapter typechecks against 27.1 SDK. Real Duo fold behavior unverified. |
 | P4 | passed (unit) | library_saves | 10 library/persistence tests pass (duplicates, corruption, interrupted writes, version/ROM mismatch, traversal). |
 | P5 | active | root | `--diagnostic --selftest` passes: A input changes frame, release reverts, pause freezes core (0 frames/1 s), held input released across pause/resume, stop→relaunch. Not observed: lid (fixture ignores lid), battery save round trip (no lawful cartridge-save fixture; see FIXTURES.md), real audio interruption, touch on lower screen via UI, layout swap/override. |
-| P6 | active | root | Manual fold trial on Duo simulator (user-driven; `simctl` has no posture control): one boot, frames continuous through half-fold, close→outer, reopen, 2 rotations (no reboot). Half-fold: `split` layout clear of 40 pt division. Controls were missing on outer display and crammed in portrait → solver fixed; re-trial of portrait/outer pending. |
+| P6 | active | root | Manual fold trial on Duo simulator (user-driven; `simctl` has no posture control): one boot, frames continuous through half-fold, close→outer, reopen, 2 rotations (no reboot). Half-fold: `split` layout clear of 40 pt division. Controls were missing on outer display and crammed in portrait → solver fixed (D11) and re-verified on the simulator: half-fold landscape and portrait splits with full controls, outer landscape with controls. Remaining: outer-display portrait under the fix (covered by unit test only), lower-band control placement (unit-level change, not re-observed), real hardware. |
 | P7 | not run | — | Simulator-only run (D06). G1/G3 not run. |
 | P8 | not started | — | Fresh read-only reviewer at end. |
 
@@ -33,6 +33,7 @@ P0–P4 as above. Run ended (usage limit) ~17:42 local while root was rebuilding
 - Fold trial (`artifacts/poc/2026-09-23-resume/fold/`, `logs/fold-events.jsonl`, local): see P6 row. Geometry observed: inner landscape 867×523 pt; half-fold division `456,-82 40x669`; outer display 382×532 pt; inner portrait 669×805 pt. Transient geometry with stale reserved regions appears for ~1 frame during transitions (harmless; each change cancels touches).
 - Fixed solver ranking: control-band candidates now outrank larger screens when both screens stay ≥170 pt wide. Regression test `testObservedDuoGeometriesKeepUsableControls` uses the observed sizes. 18 tests pass.
 - Not yet explained: a horizontal seam in the fixture's top screen in one portrait screenshot. Likely the fixture writing VRAM past vblank (tearing in emulated content), not host presentation — unverified.
+- Re-trial (`fold2/`, `logs/fold2-events.jsonl`, local): 1 boot, frames continuous through half-fold → half-fold portrait → outer landscape (594×320 pt) → unfold. Controls present in every posture. Outer landscape put controls in the top band; canvas now prefers the lowest qualifying band.
 
 ## How to resume (for any agent)
 1. `DEVELOPER_DIR=/Applications/Xcode-Beta.app/Contents/Developer`; first-time: `scripts/bootstrap-tools.sh`, then `scripts/build-poc.sh --diagnostic --configuration Debug` (full core build) or `--skip-core` if `build/core-simulator/libDuoCoreCombined.a` exists.
