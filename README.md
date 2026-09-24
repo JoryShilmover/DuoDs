@@ -1,6 +1,6 @@
 # Duo DS proof of concept
 
-Execution handoff for a native iOS Nintendo DS emulator that uses the folding inner display of iPhone Duo. This repository currently contains planning documents only; no emulator, build project, or benchmark has been produced.
+Execution handoff for a native iOS Nintendo DS emulator that uses the folding inner display of iPhone Duo. A work-in-progress prototype (SwiftUI app, melonDS DS core via a minimal libretro host, layout/input, library/saves) is in the tree. Current status and resume steps: [work log](docs/poc/WORK_LOG.md). Build: `scripts/build-poc.sh`; tests: `scripts/test-poc.sh`.
 
 **Start here:** [Execution plan](docs/poc/EXECUTION_PLAN.md). To dispatch the work to another orchestration agent, use the [handoff prompt](docs/poc/HANDOFF.md).
 

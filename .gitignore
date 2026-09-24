@@ -10,3 +10,12 @@ xcuserdata/
 
 # Local validation evidence may contain private device/content metadata
 artifacts/poc/
+
+# User-owned emulator content and local tools
+*.nds
+*.srl
+*.sav
+*.state
+*.dsv
+*.bin
+.swiftpm/

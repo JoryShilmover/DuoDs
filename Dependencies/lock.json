@@ -1,0 +1,180 @@
+{
+  "core": "bc4e4b67d2d470d7c682810a1e892cafd6f9082b",
+  "dependencies": [
+    {
+      "name": "melonds-ds",
+      "url": "https://github.com/JesseTG/melonds-ds.git",
+      "commit": "bc4e4b67d2d470d7c682810a1e892cafd6f9082b",
+      "path": "build/dependencies/melonds-ds",
+      "notices": [
+        {
+          "path": "LICENSE",
+          "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+        },
+        {
+          "path": "cmake/melondsds-LICENSE.txt.in",
+          "sha256": "3da044db841355604abc536a17d5102809fbb27c1cef0be6661e84dc7722d67c"
+        }
+      ]
+    },
+    {
+      "name": "date",
+      "url": "https://github.com/HowardHinnant/date",
+      "commit": "1ead6715dec030d340a316c927c877a3c4e5a00c",
+      "path": "build/dependencies/fetched/date-src",
+      "notices": [
+        {
+          "path": "LICENSE.txt",
+          "sha256": "c90f6c00fb961170560299cbda28ca2d45804913aa8b2a9f36dbb8e0028d6930"
+        }
+      ]
+    },
+    {
+      "name": "embed-binaries",
+      "url": "https://github.com/andoalon/embed-binaries",
+      "commit": "078b62beba97e8192c99bfb16d5e17220cfc7598",
+      "path": "build/dependencies/fetched/embed-binaries-src",
+      "notices": [
+        {
+          "path": "LICENSE",
+          "sha256": "12680bd1abee94f7f06279d5a1021b4b98e2e4bca22b77163efdababde965c65"
+        }
+      ]
+    },
+    {
+      "name": "fmt",
+      "url": "https://github.com/fmtlib/fmt",
+      "commit": "40626af88bd7df9a5fb80be7b25ac85b122d6c21",
+      "path": "build/dependencies/fetched/fmt-src",
+      "notices": [
+        {
+          "path": "LICENSE",
+          "sha256": "07580f2a3b35709ce703d523f447b242f6dfec7582a8c0df102c7fa2849375f8"
+        },
+        {
+          "path": "doc/python-license.txt",
+          "sha256": "dcc4d9738d3e8d3b9f51286f1dc90d0c49ea8325982008ced021932a0b0b0cda"
+        }
+      ]
+    },
+    {
+      "name": "glm",
+      "url": "https://github.com/g-truc/glm",
+      "commit": "e7970a8b26732f1b0df9690f7180546f8c30e48e",
+      "path": "build/dependencies/fetched/glm-src",
+      "notices": [
+        {
+          "path": "copying.txt",
+          "sha256": "62d2d642c7d054d4fb4c9b42faad617d6c88fcd91e317f8035aa9f277cc159c3"
+        }
+      ]
+    },
+    {
+      "name": "libretro-common",
+      "url": "https://github.com/libretro/libretro-common",
+      "commit": "ad9124f1ecc5d0092fd285cbf9c4ffac317b1a65",
+      "path": "build/dependencies/fetched/libretro-common-src",
+      "notices": []
+    },
+    {
+      "name": "libslirp",
+      "url": "https://github.com/JesseTG/libslirp-mirror",
+      "commit": "e61dbd459c8c06607b3a84694489427e8ec60f17",
+      "path": "build/dependencies/fetched/libslirp-src",
+      "notices": [
+        {
+          "path": "COPYRIGHT",
+          "sha256": "b28aecf4796a6a22054167f0a976de13d9db335669d37afd2dc7ea4c335e1e13"
+        }
+      ]
+    },
+    {
+      "name": "melonds",
+      "url": "https://github.com/melonDS-emu/melonDS",
+      "commit": "7117178c2dd56df32b6534ba6a54ad1f8547e693",
+      "path": "build/dependencies/fetched/melonds-src",
+      "notices": [
+        {
+          "path": "LICENSE",
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+        },
+        {
+          "path": "src/fatfs/LICENSE.txt",
+          "sha256": "b896e32fb2cdb3fc8b3b6fd854706fca4ac55619fbb6d5eb2429cb05ee338966"
+        },
+        {
+          "path": "src/teakra/LICENSE",
+          "sha256": "84ac887a2ae105eacfb5aeb1921502ef91e0bd230bb2e6de3e8507f79177adf5"
+        },
+        {
+          "path": "src/dolphin/license_dolphin.txt",
+          "sha256": "ab15fd526bd8dd18a9e77ebc139656bf4d33e97fc7238cd11bf60e2b9b8666c6"
+        },
+        {
+          "path": "src/tiny-AES-c/unlicense.txt",
+          "sha256": "7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c"
+        },
+        {
+          "path": "src/frontend/qt_sdl/InputConfig/resources/LICENSE.md",
+          "sha256": "1edd93c649f2ed5edb5a6afe9a616d8aa508dcf156f9cfbea6dc40e806488ece"
+        },
+        {
+          "path": "src/net/libslirp/COPYRIGHT",
+          "sha256": "b28aecf4796a6a22054167f0a976de13d9db335669d37afd2dc7ea4c335e1e13"
+        }
+      ]
+    },
+    {
+      "name": "pntr",
+      "url": "https://github.com/robloach/pntr",
+      "commit": "922aed03c4c53803466100596211da7549945da7",
+      "path": "build/dependencies/fetched/pntr-src",
+      "notices": [
+        {
+          "path": "LICENSE.md",
+          "sha256": "972d7d0be2a980b6e24b3f15f510efbd082fa9d105fa488778f851de7ca0dc06"
+        }
+      ]
+    },
+    {
+      "name": "span-lite",
+      "url": "https://github.com/martinmoene/span-lite",
+      "commit": "00afc281a8c3c7657bb9c5b000d6e7082c1bbc7f",
+      "path": "build/dependencies/fetched/span-lite-src",
+      "notices": [
+        {
+          "path": "LICENSE.txt",
+          "sha256": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566"
+        }
+      ]
+    },
+    {
+      "name": "yamc",
+      "url": "https://github.com/yohhoy/yamc",
+      "commit": "4e015a7e8eb0d61c34e6928676c8c78881a72d73",
+      "path": "build/dependencies/fetched/yamc-src",
+      "notices": [
+        {
+          "path": "LICENSE",
+          "sha256": "df70b74967209c811812d4305f666ab6cabf5d4c21bb96ad2046642145544b66"
+        }
+      ]
+    },
+    {
+      "name": "zlib",
+      "url": "https://github.com/madler/zlib",
+      "commit": "51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf",
+      "path": "build/dependencies/fetched/zlib-src",
+      "notices": [
+        {
+          "path": "LICENSE",
+          "sha256": "845efc77857d485d91fb3e0b884aaa929368c717ae8186b66fe1ed2495753243"
+        },
+        {
+          "path": "contrib/dotzlib/LICENSE_1_0.txt",
+          "sha256": "36266a8fd073568394cb81cdb2b124f7fdae2c64c1a7ed09db34b4d22efa2951"
+        }
+      ]
+    }
+  ]
+}
