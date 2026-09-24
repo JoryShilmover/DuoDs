@@ -18,7 +18,13 @@ struct RootView: View {
         NavigationStack {
             Group {
                 if model.owner != nil && model.owner != sceneID {
-                    ContentUnavailableView("Session in another window", systemImage: "rectangle.on.rectangle", description: Text("Duo DS runs one emulation session. Return to its original window."))
+                    ContentUnavailableView {
+                        Label("Session in another window", systemImage: "rectangle.on.rectangle")
+                    } description: {
+                        Text("Duo DS runs one emulation session at a time.")
+                    } actions: {
+                        Button("Move game here") { Task { await model.takeOver(sceneID) } }.buttonStyle(.borderedProminent)
+                    }
                 } else if model.current != nil {
                     VStack(spacing: 0) {
                         PlaySessionView(frame: session.frame, preference: preference, swapScreens: swapped,
@@ -91,6 +97,7 @@ struct RootView: View {
             } message: { Text(model.message ?? "") }
         }
         .task { model.claim(sceneID); await model.active(scenePhase == .active, scene: sceneID) }
+        .onDisappear { Task { await model.release(sceneID) } }
         .onChange(of: scenePhase) { _, phase in Task { await model.active(phase == .active, scene: sceneID) } }
     }
 }

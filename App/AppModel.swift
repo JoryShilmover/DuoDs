@@ -53,6 +53,19 @@ import UniformTypeIdentifiers
     }
 
     func claim(_ scene: UUID) { if owner == nil { owner = scene } }
+    /// A closed window gives up the session so a new window is not locked out (P8 review).
+    func release(_ scene: UUID) async {
+        guard owner == scene else { return }
+        await pauseAndSave(reason: "scene-disconnected")
+        owner = nil
+    }
+    /// Moves the single session to another window; it stays paused until the user resumes there.
+    func takeOver(_ scene: UUID) async {
+        guard owner != scene else { return }
+        await pauseAndSave(reason: "scene-handoff")
+        owner = scene
+        foreground = true
+    }
     func active(_ active: Bool, scene: UUID) async {
         claim(scene)
         guard owner == scene else { return }
@@ -107,7 +120,10 @@ import UniformTypeIdentifiers
         catch { message = error.localizedDescription }
     }
     private func flushBattery() async throws {
-        guard let game = current, session.phase != .idle, session.phase != .failed, session.phase != .loading else { return }
+        guard let game = current, session.phase != .idle, session.phase != .loading else { return }
+        // After a runtime failure the core is paused but still loaded: flush once so recent in-game saves
+        // are not lost. PersistenceStore keeps the previous save as `battery.previous` for recovery.
+        if session.phase == .failed { record("failed-core-flush") }
         if let data = try await session.snapshotBattery() { try persistence.writeBattery(data, gameID: game.id) }
     }
     func persistBattery() async {
