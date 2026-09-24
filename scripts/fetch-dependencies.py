@@ -15,7 +15,8 @@ patch=root/'Dependencies/patches/static-core.patch'
 if subprocess.run(['git','-C',str(core),'apply','--reverse','--check',str(patch)],capture_output=True).returncode:
     subprocess.run(['git','-C',str(core),'apply','--check',str(patch)],check=True)
     subprocess.run(['git','-C',str(core),'apply',str(patch)],check=True)
-actual=subprocess.check_output(['git','-C',str(core),'diff'],text=True)
+# --full-index: abbreviated blob hashes vary with clone size, which broke fresh-clone builds.
+actual=subprocess.check_output(['git','-C',str(core),'diff','--full-index'],text=True)
 if actual != patch.read_text(): raise SystemExit('Core local diff differs from retained patch; refusing unrecorded source changes.')
 # Upstream zlib's out-of-source configure renames this tracked header. Restore
 # only that exact mechanically moved file, checking it against the pinned blob.

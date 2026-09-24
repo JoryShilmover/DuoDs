@@ -1,5 +1,5 @@
 diff --git a/src/libretro/CMakeLists.txt b/src/libretro/CMakeLists.txt
-index 0ed8016..8c52869 100644
+index 0ed801623090d75f55d231d582b0d33c754c8840..8c52869f3088669904a82e263301f567a71639eb 100644
 --- a/src/libretro/CMakeLists.txt
 +++ b/src/libretro/CMakeLists.txt
 @@ -3,7 +3,9 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -14,7 +14,7 @@ index 0ed8016..8c52869 100644
  else ()
      set(LIBRARY_TYPE MODULE)
 diff --git a/src/libretro/config/config.cpp b/src/libretro/config/config.cpp
-index 4f1a08e..090de0b 100644
+index 4f1a08ead5b53340ba8360b310a28ec2d60b46d6..090de0ba756e89a54e8c2f8b6f816c1ba699f570 100644
 --- a/src/libretro/config/config.cpp
 +++ b/src/libretro/config/config.cpp
 @@ -50,7 +50,9 @@
@@ -28,7 +28,7 @@ index 4f1a08e..090de0b 100644
  #include "config/constants.hpp"
  #include "config/definitions.hpp"
 diff --git a/src/libretro/format.cpp b/src/libretro/format.cpp
-index 3698a6b..5c2319d 100644
+index 3698a6b60c7120a47a2254fef37eb4202f5cb4b2..5c2319dcb12ffb54a82f1caa340408b37581eca7 100644
 --- a/src/libretro/format.cpp
 +++ b/src/libretro/format.cpp
 @@ -82,6 +82,9 @@ auto fmt::formatter<MelonDsDs::FormattedGLEnum>::format(MelonDsDs::FormattedGLEn
@@ -50,7 +50,7 @@ index 3698a6b..5c2319d 100644
  
  auto fmt::formatter<MelonDsDs::BiosType>::format(MelonDsDs::BiosType c, format_context& ctx) const -> decltype(ctx.out()) {
 diff --git a/src/libretro/net/net.cpp b/src/libretro/net/net.cpp
-index 0bc67e8..6b1f9ef 100644
+index 0bc67e8d5be090af401100c7d7768667169150d5..6b1f9efb209946c163de9933bd514695e461109e 100644
 --- a/src/libretro/net/net.cpp
 +++ b/src/libretro/net/net.cpp
 @@ -15,6 +15,7 @@
@@ -68,7 +68,7 @@ index 0bc67e8..6b1f9ef 100644
 +
 +#endif // HAVE_NETWORKING
 diff --git a/src/libretro/net/net.hpp b/src/libretro/net/net.hpp
-index e61880e..7ffdff3 100644
+index e61880e2e133931c4586f67f9ace60c57d95362b..7ffdff3f4c2fc3b7a590b4cdb675c970856e4e4d 100644
 --- a/src/libretro/net/net.hpp
 +++ b/src/libretro/net/net.hpp
 @@ -15,6 +15,23 @@
