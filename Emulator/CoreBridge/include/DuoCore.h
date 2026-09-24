@@ -24,6 +24,8 @@ void duo_clear_audio(DuoCore *);
 size_t duo_audio_buffered(DuoCore *);
 /* Host microphone samples: mono int16 at 44100 Hz, from the capture thread (single producer). */
 void duo_push_mic(DuoCore *, const int16_t *samples, size_t count);
+/* Push the core's buffered file writes (homebrew SD-card image) to the OS. Executor-only. */
+void duo_flush_storage(DuoCore *);
 void duo_stats(DuoCore *, DuoStats *);
 size_t duo_save_size(DuoCore *);
 bool duo_copy_save(DuoCore *, void *, size_t);

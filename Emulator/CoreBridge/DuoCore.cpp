@@ -7,6 +7,7 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <iterator>
@@ -31,6 +32,12 @@ constexpr const char* kOptions[][2] = {
     // the on-screen Mic button (L3, "hold" mode); otherwise, or without permission, the core reads silence.
     {"melonds_mic_input", "microphone"},
     {"melonds_mic_input_active", "hold"},
+    // Homebrew SD card (DLDI): one image per game in CoreSaves, no host-folder sync. The core exports
+    // the sync folder only on clean unload, so after an app kill a stale folder could overwrite newer
+    // image contents; the image alone is durable once duo_flush_storage() pushes buffered writes out.
+    {"melonds_homebrew_sdcard", "enabled"},
+    {"melonds_homebrew_sync_sdcard_to_host", "disabled"},
+    {"melonds_homebrew_readonly", "disabled"},
 };
 constexpr unsigned kMicRate = 44100;
 
@@ -326,6 +333,11 @@ size_t duo_read_audio(DuoCore* c, float* stereo, size_t frames) {
     return c->audio.pop(stereo, frames);
 }
 void duo_clear_audio(DuoCore* c) { if (c) c->audio.clear(); }
+void duo_flush_storage(DuoCore*) {
+    // The core writes SD-card sectors through fully buffered stdio (libretro VFS, 64 KB buffers).
+    // Hand everything to the OS so an app kill cannot lose it. Executor-only (same thread as the core).
+    std::fflush(nullptr);
+}
 void duo_push_mic(DuoCore* c, const int16_t* samples, size_t count) {
     if (c && c == current() && samples) c->mic.push(samples, count);
 }

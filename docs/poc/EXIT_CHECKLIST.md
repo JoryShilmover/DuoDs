@@ -24,7 +24,7 @@ Legend: **[agent]** an agent can do it alone · **[you]** needs you (device, pla
 | Apple Pencil | Untested | [you] if you have one |
 | Emulated lid (V16): visible in-game effect | Wired and unit-tested; not observed in a game | [you] |
 | Scene ownership release and battery flush after core failure | Done (`8e08fd9`) | — |
-| Homebrew SD (DLDI) save durability | Unknown | [agent] |
+| Homebrew SD (DLDI) save durability | Enabled and flushed (D18); end-to-end unverified without an SD-writing homebrew | [you] if you have a homebrew that saves to SD |
 | Presentation metrics (V09) | Instrumented; 99.7% unique on simulator | [you] device run |
 | Touch accuracy and latency (V10) | Instrumented (`touch-down`/`touch-consumed`) | [you] tap test on device |
 | Energy/battery sampling (V12) | Battery level/state, low power, brightness, thermal logged | [you] device run |

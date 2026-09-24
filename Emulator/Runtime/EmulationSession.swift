@@ -232,6 +232,9 @@ private final class RuntimeWorker: @unchecked Sendable {
         schedule(generation)
     }
 
+    /// Called at every checkpoint (battery snapshot) and pause.
+    func flushStorage() { if let core { duo_flush_storage(core) } }
+
     func setMicrophone(held: Bool) {
         guard held != micHeld else { return }
         #if canImport(AVFoundation)
@@ -250,6 +253,7 @@ private final class RuntimeWorker: @unchecked Sendable {
     }
 
     func pause() {
+        flushStorage()
         setMicrophone(held: false)
         running = false
         generation &+= 1
@@ -357,6 +361,7 @@ private final class RuntimeWorker: @unchecked Sendable {
 
     func snapshotBattery() throws -> Data? {
         guard let core = core else { throw RuntimeError.unavailable("No game is loaded") }
+        duo_flush_storage(core) // homebrew SD-card writes ride along with every save checkpoint
         let size = duo_save_size(core)
         if size == 0 { return nil }
         var data = Data(count: size)
