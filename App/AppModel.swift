@@ -3,6 +3,7 @@
 import Foundation
 import SwiftUI
 import AVFoundation
+import DualPaneCore
 import os
 import UIKit
 import UniformTypeIdentifiers
@@ -535,8 +536,8 @@ import UniformTypeIdentifiers
     }
     func recordGeometry(_ environment: DisplayEnvironment, _ solution: LayoutSolution) {
         func r(_ c: CGRect) -> String { String(format: "%.0f,%.0f %.0fx%.0f", c.minX, c.minY, c.width, c.height) }
-        let regions = environment.reservedRegions.map { "\($0.kind):\(r($0.frame))" }.joined(separator: ";")
-        record("geometry", detail: "bounds=\(r(environment.bounds)) safe=\(r(environment.safeBounds)) regions=[\(regions)] mode=\(solution.effectiveMode) compact=\(solution.isCompact) upper=\(r(solution.upperScreen)) lower=\(r(solution.lowerScreen))")
+        let regions = environment.exclusionRegions.map { "\($0.kind):\(r($0.frame))" }.joined(separator: ";")
+        record("geometry", detail: "bounds=\(r(environment.bounds)) safe=\(r(environment.safeBounds)) regions=[\(regions)] mode=\(solution.arrangement) compact=\(solution.isCompact) upper=\(r(solution.primaryPane)) lower=\(r(solution.secondaryPane))")
     }
     func record(_ event: String, detail: String? = nil) {
         let s = session.stats

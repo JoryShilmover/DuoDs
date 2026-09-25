@@ -1,0 +1,14 @@
+{
+  "pins" : [
+    {
+      "identity" : "dualpane",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/JoryShilmover/DualPane.git",
+      "state" : {
+        "revision" : "44dc4039aaff73c72a3a518b5907fa7d1360a0c8",
+        "version" : "0.1.0"
+      }
+    }
+  ],
+  "version" : 2
+}

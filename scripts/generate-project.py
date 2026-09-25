@@ -23,7 +23,11 @@ for folder in ['App','Shared','Emulator','Platform','Features']:
 product=obj('product','isa = PBXFileReference; explicitFileType = wrapper.application; path = DuoDS.app; sourceTree = BUILT_PRODUCTS_DIR;')
 group=obj('group',f'isa = PBXGroup; children = ({",".join([f for f,b in sources]+[product])}); sourceTree = "<group>";')
 phase=obj('sources',f'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({",".join(b for f,b in sources)}); runOnlyForDeploymentPostprocessing = 0;')
-frameworks=obj('frameworks','isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;')
+# Swift packages: the screen layout solver lives in DualPane. 0.x minor releases may break the API.
+package=obj('package:DualPane','isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/JoryShilmover/DualPane.git"; requirement = { kind = upToNextMinorVersion; minimumVersion = 0.1.0; };')
+package_products=[obj('product:'+name, f'isa = XCSwiftPackageProductDependency; package = {package}; productName = {name};') for name in ['DualPaneCore','DualPaneUIKit']]
+package_builds=[obj('pb:'+ref, f'isa = PBXBuildFile; productRef = {ref};') for ref in package_products]
+frameworks=obj('frameworks','isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ('+','.join(package_builds)+'); runOnlyForDeploymentPostprocessing = 0;')
 resource_builds=[]
 resource_paths=['Dependencies/CORE-NOTICES.txt']
 if '--diagnostic' in sys.argv: resource_paths.append('build/fixtures/duo-diagnostic.nds')
@@ -50,8 +54,8 @@ for name in ['Debug','Release']:
  if name=='Debug': s['SWIFT_OPTIMIZATION_LEVEL']='-Onone'
  configs.append(obj('config'+name,'isa = XCBuildConfiguration; baseConfigurationReference = '+configref+'; buildSettings = {'+''.join(k+' = '+q(v)+';' for k,v in s.items())+'}; name = '+name+';'))
 cl=obj('configs','isa = XCConfigurationList; buildConfigurations = ('+','.join(configs)+'); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;')
-target=obj('target',f'isa = PBXNativeTarget; buildConfigurationList = {cl}; buildPhases = ({phase},{frameworks},{resources}); buildRules = (); dependencies = (); name = DuoDS; productName = DuoDS; productReference = {product}; productType = "com.apple.product-type.application";')
-proj=obj('project',f'isa = PBXProject; attributes = {{ LastUpgradeCheck = 2710; }}; buildConfigurationList = {cl}; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en,Base); mainGroup = {group}; projectDirPath = ""; projectRoot = ""; targets = ({target});')
+target=obj('target',f'isa = PBXNativeTarget; buildConfigurationList = {cl}; buildPhases = ({phase},{frameworks},{resources}); buildRules = (); dependencies = (); name = DuoDS; packageProductDependencies = ({",".join(package_products)}); productName = DuoDS; productReference = {product}; productType = "com.apple.product-type.application";')
+proj=obj('project',f'isa = PBXProject; attributes = {{ LastUpgradeCheck = 2710; }}; buildConfigurationList = {cl}; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en,Base); mainGroup = {group}; packageReferences = ({package}); projectDirPath = ""; projectRoot = ""; targets = ({target});')
 (project/'project.pbxproj').write_text('// !$*UTF8*$!\n{archiveVersion = 1; classes = {}; objectVersion = 56; objects = {\n'+'\n'.join(objects)+f'\n}}; rootObject = {proj};}}\n')
 scheme=project/'xcshareddata/xcschemes'; scheme.mkdir(parents=True,exist_ok=True)
 ref=f'<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{target}" BuildableName="DuoDS.app" BlueprintName="DuoDS" ReferencedContainer="container:DuoDS.xcodeproj"/>'
