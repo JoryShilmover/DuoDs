@@ -66,7 +66,7 @@ public final class InputRouter {
 
     /// Geometry changes invalidate the captured screen and contact transform.
     public func setLowerScreen(_ rect: CGRect) {
-        guard !rect.duoEquals(lowerScreen) else { return }
+        guard rect != lowerScreen else { return }
         lowerScreen = rect
         stylusID = nil
         stylusPoint = nil

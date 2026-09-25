@@ -3,6 +3,7 @@
 import XCTest
 import CoreGraphics
 @testable import DuoLogic
+import DualPaneCore
 
 final class LayoutInputTests: XCTestCase {
     private func rect(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> CGRect {
@@ -21,16 +22,16 @@ final class LayoutInputTests: XCTestCase {
         let safe = rect(12, 42, 366, 760)
         let camera = rect(160, 42, 70, 40)
         let environment = DisplayEnvironment(bounds: rect(0, 0, 390, 844), safeBounds: safe,
-            reservedRegions: [ReservedRegion(frame: camera, kind: .occlusion)])
-        let result = ScreenLayoutSolver.solve(environment: environment)
-        assertScreen(result.upperScreen, inside: safe, avoiding: [camera])
-        assertScreen(result.lowerScreen, inside: safe, avoiding: [camera])
-        XCTAssertFalse(result.upperScreen.intersects(result.lowerScreen))
-        for controls in result.controlRegions {
+            exclusionRegions: [ExclusionRegion(frame: camera, kind: .occlusion)])
+        let result = DualPaneSolver.solve(environment: environment, configuration: .ds)
+        assertScreen(result.primaryPane, inside: safe, avoiding: [camera])
+        assertScreen(result.secondaryPane, inside: safe, avoiding: [camera])
+        XCTAssertFalse(result.primaryPane.intersects(result.secondaryPane))
+        for controls in result.accessoryRegions {
             XCTAssertTrue(safe.contains(controls))
             XCTAssertFalse(controls.intersects(camera))
-            XCTAssertFalse(controls.intersects(result.upperScreen))
-            XCTAssertFalse(controls.intersects(result.lowerScreen))
+            XCTAssertFalse(controls.intersects(result.primaryPane))
+            XCTAssertFalse(controls.intersects(result.secondaryPane))
         }
     }
 
@@ -38,27 +39,27 @@ final class LayoutInputTests: XCTestCase {
         let safe = rect(0, 0, 900, 700)
         let division = rect(440, 0, 20, 700)
         let environment = DisplayEnvironment(bounds: safe, safeBounds: safe,
-            reservedRegions: [ReservedRegion(frame: division, kind: .division)])
-        let standard = ScreenLayoutSolver.solve(environment: environment)
-        let swapped = ScreenLayoutSolver.solve(environment: environment, swapScreens: true)
-        assertScreen(standard.upperScreen, inside: safe, avoiding: [division])
-        assertScreen(standard.lowerScreen, inside: safe, avoiding: [division])
-        XCTAssertEqual(standard.effectiveMode, .split)
-        XCTAssertTrue(standard.upperScreen.duoEquals(swapped.lowerScreen))
-        XCTAssertTrue(standard.lowerScreen.duoEquals(swapped.upperScreen))
+            exclusionRegions: [ExclusionRegion(frame: division, kind: .division)])
+        let standard = DualPaneSolver.solve(environment: environment, configuration: .ds)
+        let swapped = DualPaneSolver.solve(environment: environment, configuration: .ds, swapPanes: true)
+        assertScreen(standard.primaryPane, inside: safe, avoiding: [division])
+        assertScreen(standard.secondaryPane, inside: safe, avoiding: [division])
+        XCTAssertEqual(standard.arrangement, .split)
+        XCTAssertTrue(standard.primaryPane == swapped.secondaryPane)
+        XCTAssertTrue(standard.secondaryPane == swapped.primaryPane)
     }
 
     func testManualModesAndCompactFallback() {
         let safe = rect(0, 0, 320, 470)
         let environment = DisplayEnvironment(bounds: safe, safeBounds: safe)
-        let stacked = ScreenLayoutSolver.solve(environment: environment, preference: .stacked)
-        let side = ScreenLayoutSolver.solve(environment: environment, preference: .sideBySide)
-        XCTAssertEqual(stacked.effectiveMode, .stacked)
-        XCTAssertEqual(side.effectiveMode, .sideBySide)
-        assertScreen(stacked.upperScreen, inside: safe, avoiding: [])
-        assertScreen(stacked.lowerScreen, inside: safe, avoiding: [])
-        assertScreen(side.upperScreen, inside: safe, avoiding: [])
-        assertScreen(side.lowerScreen, inside: safe, avoiding: [])
+        let stacked = DualPaneSolver.solve(environment: environment, configuration: .ds, preference: .stacked)
+        let side = DualPaneSolver.solve(environment: environment, configuration: .ds, preference: .sideBySide)
+        XCTAssertEqual(stacked.arrangement, .stacked)
+        XCTAssertEqual(side.arrangement, .sideBySide)
+        assertScreen(stacked.primaryPane, inside: safe, avoiding: [])
+        assertScreen(stacked.secondaryPane, inside: safe, avoiding: [])
+        assertScreen(side.primaryPane, inside: safe, avoiding: [])
+        assertScreen(side.secondaryPane, inside: safe, avoiding: [])
     }
 
     func testTouchMappingRejectsOutsideAndUsesLowerScreenCoordinates() {
@@ -108,7 +109,7 @@ final class LayoutInputTests: XCTestCase {
     /// estimated iPhone landscape canvas. Every pose must give two DS-style thumb clusters that are
     /// large enough, inside the safe area, and clear of both screens.
     func testObservedGeometriesGetDSStyleClusters() {
-        let min = ScreenLayoutSolver.clusterMinimum
+        let min = DualPaneConfiguration.ds.accessories!.minimumSize
         for (name, size) in [("Duo inner portrait", CGSize(width: 669, height: 805)),
                              ("Duo outer display", CGSize(width: 382, height: 532)),
                              ("Duo outer landscape", CGSize(width: 594, height: 320)),
@@ -116,17 +117,18 @@ final class LayoutInputTests: XCTestCase {
                              ("iPhone 15 Pro Max portrait", CGSize(width: 430, height: 747)),
                              ("iPhone landscape (estimate)", CGSize(width: 814, height: 350))] {
             let safe = rect(0, 0, size.width, size.height)
-            let result = ScreenLayoutSolver.solve(environment: DisplayEnvironment(bounds: safe, safeBounds: safe))
-            XCTAssertEqual(result.controlRegions.count, 2, name)
-            XCTAssertFalse(result.controlsOverlapScreens, name)
+            let result = DualPaneSolver.solve(environment: DisplayEnvironment(bounds: safe, safeBounds: safe),
+                                              configuration: .ds)
+            XCTAssertEqual(result.accessoryRegions.count, 2, name)
+            XCTAssertFalse(result.accessoriesOverlapPanes, name)
             XCTAssertFalse(result.isCompact, name)
-            let (left, right) = (result.controlRegions[0], result.controlRegions[1])
+            let (left, right) = (result.accessoryRegions[0], result.accessoryRegions[1])
             XCTAssertLessThan(left.midX, right.midX, "\(name): D-pad cluster must be on the left")
-            for cluster in result.controlRegions {
+            for cluster in result.accessoryRegions {
                 XCTAssertGreaterThanOrEqual(cluster.width, min.width, name)
                 XCTAssertGreaterThanOrEqual(cluster.height, min.height, name)
                 XCTAssertTrue(safe.contains(cluster), name)
-                XCTAssertFalse(cluster.intersects(result.upperScreen) || cluster.intersects(result.lowerScreen), name)
+                XCTAssertFalse(cluster.intersects(result.primaryPane) || cluster.intersects(result.secondaryPane), name)
             }
             XCTAssertFalse(left.intersects(right), name)
         }
@@ -135,13 +137,13 @@ final class LayoutInputTests: XCTestCase {
     func testHalfFoldPutsControlsWithLowerScreenClearOfHinge() {
         let safe = rect(0, 0, 867, 523)
         let division = rect(456, -82, 40, 669)
-        let result = ScreenLayoutSolver.solve(environment: DisplayEnvironment(bounds: safe, safeBounds: safe,
-            reservedRegions: [ReservedRegion(frame: division, kind: .division)]))
-        XCTAssertEqual(result.effectiveMode, .split)
-        XCTAssertEqual(result.controlRegions.count, 2)
-        for cluster in result.controlRegions {
+        let result = DualPaneSolver.solve(environment: DisplayEnvironment(bounds: safe, safeBounds: safe,
+            exclusionRegions: [ExclusionRegion(frame: division, kind: .division)]), configuration: .ds)
+        XCTAssertEqual(result.arrangement, .split)
+        XCTAssertEqual(result.accessoryRegions.count, 2)
+        for cluster in result.accessoryRegions {
             XCTAssertFalse(cluster.intersects(division))
-            XCTAssertFalse(cluster.intersects(result.lowerScreen) || cluster.intersects(result.upperScreen))
+            XCTAssertFalse(cluster.intersects(result.secondaryPane) || cluster.intersects(result.primaryPane))
         }
     }
 

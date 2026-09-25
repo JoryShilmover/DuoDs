@@ -3,7 +3,7 @@
 import Foundation
 import CoreGraphics
 
-/// DS Lite–style on-screen controls placed inside the two thumb clusters chosen by ScreenLayoutSolver.
+/// DS Lite–style on-screen controls placed inside the two thumb clusters chosen by DualPaneSolver (DualPaneCore).
 /// Left cluster: L shoulder (top, outer edge), D-pad, Mic/Lid/Pause pills.
 /// Right cluster: R shoulder (top, outer edge), X/Y/A/B diamond, Start/Select/fast-forward pills.
 /// Pills go in an inner column when the cluster is wide, otherwise in a row underneath.

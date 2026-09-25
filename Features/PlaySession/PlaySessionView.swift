@@ -5,6 +5,8 @@ import UIKit
 import SwiftUI
 import MetalKit
 import CoreImage
+import DualPaneCore
+import DualPaneUIKit
 
 /// V09 evidence: what actually reached the screen. Counted on the top-screen view only (both views
 /// present the same DSFrame). `skipped` counts core frames never shown between two presented ones.
@@ -57,7 +59,7 @@ public final class PlaySessionCanvas: UIView {
         inputSurface.cancelContacts()
         inputSurface.configure(solution: solution, scale: controlScale, leftHanded: leftHanded)
     }
-    public var layoutPreference: ScreenLayoutPreference = .automatic { didSet { lastEnvironment = nil; refreshGeometry() } }
+    public var layoutPreference: ArrangementPreference = .automatic { didSet { lastEnvironment = nil; refreshGeometry() } }
     public var swapScreens = false { didSet { lastEnvironment = nil; refreshGeometry() } }
 
     private let router = InputRouter()
@@ -130,16 +132,15 @@ public final class PlaySessionCanvas: UIView {
     private func refreshGeometry() {
         let environment = DisplayEnvironmentAdapter.capture(in: self)
         guard environment != lastEnvironment || lastSolution == nil else { return }
-        let solution = ScreenLayoutSolver.solve(environment: environment,
-                                                preference: layoutPreference,
-                                                swapScreens: swapScreens)
-        if lastSolution.map({ !solution.lowerScreen.duoEquals($0.lowerScreen) || !solution.upperScreen.duoEquals($0.upperScreen) }) ?? true {
+        let solution = DualPaneSolver.solve(environment: environment, configuration: .ds,
+                                            preference: layoutPreference, swapPanes: swapScreens)
+        if lastSolution.map({ solution.secondaryPane != $0.secondaryPane || solution.primaryPane != $0.primaryPane }) ?? true {
             inputSurface.cancelContacts()
-            router.setLowerScreen(solution.lowerScreen)
+            router.setLowerScreen(solution.secondaryPane)
             onInput?(router.snapshot)
         }
-        topView.frame = solution.upperScreen
-        bottomView.frame = solution.lowerScreen
+        topView.frame = solution.primaryPane
+        bottomView.frame = solution.secondaryPane
         inputSurface.frame = bounds
         inputSurface.configure(solution: solution, scale: controlScale, leftHanded: leftHanded)
         let changed = solution != lastSolution
@@ -151,7 +152,7 @@ public final class PlaySessionCanvas: UIView {
 
 public struct PlaySessionView: UIViewRepresentable {
     public var frame: DSFrame?
-    public var preference: ScreenLayoutPreference
+    public var preference: ArrangementPreference
     public var swapScreens: Bool
     public var onInput: (DSInput) -> Void
     public var onPause: () -> Void
@@ -168,7 +169,7 @@ public struct PlaySessionView: UIViewRepresentable {
     /// Changes when the owner releases all input (pause, interruption); held touches/buttons are cancelled.
     public var inputEpoch: Int
 
-    public init(frame: DSFrame?, preference: ScreenLayoutPreference = .automatic,
+    public init(frame: DSFrame?, preference: ArrangementPreference = .automatic,
                 swapScreens: Bool = false, onInput: @escaping (DSInput) -> Void,
                 onPause: @escaping () -> Void = {}, onLidToggle: @escaping () -> Void = {},
                 onGeometry: @escaping (DisplayEnvironment, LayoutSolution) -> Void = { _, _ in },
@@ -295,9 +296,9 @@ private final class TouchSurface: UIView {
     required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
 
     func configure(solution: LayoutSolution, scale: CGFloat, leftHanded: Bool) {
-        lowerScreen = solution.lowerScreen
-        layout = solution.controlRegions.count == 2
-            ? ControlLayout(left: solution.controlRegions[0], right: solution.controlRegions[1],
+        lowerScreen = solution.secondaryPane
+        layout = solution.accessoryRegions.count == 2
+            ? ControlLayout(left: solution.accessoryRegions[0], right: solution.accessoryRegions[1],
                             scale: scale, leftHanded: leftHanded) : nil
         setNeedsDisplay()
     }

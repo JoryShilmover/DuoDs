@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Jory Shilmover
+import DualPaneCore
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -15,7 +16,7 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var sceneID = UUID()
     @State private var swapped = false
-    @State private var preference = ScreenLayoutPreference.automatic
+    @State private var preference = ArrangementPreference.automatic
     @State private var showingSettings = false
     @State private var showingStates = false
     /// One file importer serves every import; the mode decides what it accepts and where the file goes.
@@ -188,9 +189,9 @@ struct RootView: View {
             Button(model.fastForward ? "Stop Fast-Forward" : "Fast-Forward", systemImage: "forward") { model.toggleFastForward() }
             Button("Swap screens") { session.releaseInputs(); swapped.toggle() }
             Picker("Layout", selection: $preference) {
-                Text("Automatic").tag(ScreenLayoutPreference.automatic)
-                Text("Stacked").tag(ScreenLayoutPreference.stacked)
-                Text("Side by side").tag(ScreenLayoutPreference.sideBySide)
+                Text("Automatic").tag(ArrangementPreference.automatic)
+                Text("Stacked").tag(ArrangementPreference.stacked)
+                Text("Side by side").tag(ArrangementPreference.sideBySide)
             }
             Button("Pause & save progress") { Task { await model.pauseAndSave(reason: "explicit-pause") } }
             Button("Toggle emulated DS lid") { session.toggleLid() }
@@ -226,7 +227,7 @@ struct GameIcon: View {
 struct PlayArea: View {
     @ObservedObject var session: EmulationSession
     @ObservedObject var model: AppModel
-    let preference: ScreenLayoutPreference
+    let preference: ArrangementPreference
     let swapped: Bool
     @AppStorage(AppSettings.controlScale) private var controlScale = 1.0
     @AppStorage(AppSettings.controlOpacity) private var controlOpacity = 1.0
